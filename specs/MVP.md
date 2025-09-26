@@ -6,22 +6,14 @@ Memosphere is an AI-powered adaptive learning platform that generates personaliz
 
 ## 🎯 MVP Objectives
 
-- ✅ Convert text into educational questions
-- ✅ Deliver interactive quizzes
-- ✅ Track basic user performance
-- ✅ Identify weak knowledge areas
-- ✅ Lay the foundation for adaptive learning
-
-- Text input for question generation
-- Basic question types (MCQ, True/False, Fill-in-the-blanks)
-- Simple quiz interface
-- User authentication
-- Basic performance tracking (score, weak areas)
-- PostgreSQL for persistence
-- FastAPI for NLP
-- Express services for user and analytics
-- Nginx as API Gateway
-- Next.js frontend with Tailwind UI
+- ✅ Convert text into educational questions using AI
+- ✅ Deliver adaptive, personalized quiz experiences
+- ✅ Track user performance with BKT and IRT models
+- ✅ Identify weak knowledge areas and learning gaps
+- ✅ Implement spaced repetition for long-term retention
+- ✅ Provide real-time feedback and progress visualization
+- ✅ Support multiple user roles and access levels
+- ✅ Enable user feedback for continuous improvement
 
 ---
 
@@ -42,10 +34,11 @@ Memosphere is an AI-powered adaptive learning platform that generates personaliz
 - **Content Management Service**: Node.js + Express
 
 ### AI/NLP
-- **Primary NLP Engine**: AWS Comprehend
-  - Key phrase extraction
-  - Custom entity recognition
-  - Subject/topic classification
+- **Primary LLM**: Mistral Large API
+  - Question generation from text inputs
+  - Content summarization and analysis
+  - Adaptive learning recommendations
+  - Text preprocessing (key phrases, entities, syntax analysis)
 
 ### Database
 - **Relational DB**: PostgreSQL
@@ -57,10 +50,14 @@ Memosphere is an AI-powered adaptive learning platform that generates personaliz
 
 ### Infrastructure
 - **Cloud Provider**: AWS
-  - ECS/EKS for containers
-  - RDS for PostgreSQL
-  - S3 for media storage
-  - CloudWatch for monitoring
+  - **Compute**: Kubernetes on EC2 (Manual scaling, cost-effective)
+  - **Database**: Amazon RDS PostgreSQL (Free Tier: 750 hrs/month)
+  - **Authentication**: Amazon Cognito (Free Tier: 50,000 MAUs)
+  - **Storage**: Amazon S3 (Free Tier: 5GB)
+  - **Caching**: Amazon ElastiCache Redis (Optional for MVP)
+  - **API Gateway**: NGINX on Kubernetes on EC2
+  - **CI/CD**: GitHub Actions + Amazon ECR (Self-hosted runners)
+  - **Monitoring**: Amazon CloudWatch
 
 ---
 
@@ -68,17 +65,35 @@ Memosphere is an AI-powered adaptive learning platform that generates personaliz
 
 ```ts
 const MVP_FEATURES = [
-  "User Authentication (Auth0 or AWS Cognito)",
+  // User Management
+  "User Registration & Login (OAuth2 Social Login)",
+  "User Profile Creation (Age, Profession, Education)",
+  "Role-Based Access Control (Learner, Admin, Moderator)",
+  
+  // Content Input & Processing
   "Text Input for Question Generation",
-  "Basic Question Types (MCQ, True/False, Fill-in-the-blanks)",
-  "Simple Quiz Interface",
-  "Basic Score Tracking",
-  "Weak Area Logging",
-  "Session History",
-  "Minimal Progress Summary (Chart.js or Recharts)",
-  "PostgreSQL for persistence",
-  "FastAPI for question generation",
-  "Express for user and analytics services",
-  "Nginx as API Gateway",
-  "Next.js frontend with Tailwind UI"
+  "AI-Powered Question Generation from Text",
+  "Question Validation & Quality Control",
+  
+  // Learning Experience
+  "Interactive Quiz Sessions",
+  "Multiple Question Types (MCQ, True/False, Fill-in-the-blanks)",
+  "Adaptive Question Selection",
+  "Real-time Performance Feedback",
+  
+  // Progress Tracking
+  "Session History & Analytics",
+  "Performance Metrics (Score, Response Time)",
+  "Weak Area Identification",
+  "Learning Progress Visualization",
+  
+  // Spaced Repetition
+  "Memory Refresh Module",
+  "Review Queue Management",
+  "Mastery Tracking per Concept",
+  
+  // User Feedback
+  "Question Rating System (1-5 stars)",
+  "Question Flagging (Confusing, Incorrect, etc.)",
+  "Session Completion Feedback"
 ];

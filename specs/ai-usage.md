@@ -36,7 +36,7 @@ Tooling: Leverage frameworks like Hugging Face’s Transformers for model manage
 Data Handling: Utilize NLP techniques to preprocess and classify input data by topic, enhancing the model’s ability to apply the most relevant training.
 Evaluation: Continuously monitor model performance across different topics, adjusting your training strategy based on which areas need improvement.
 Conclusion
-Given the varied nature of potential input data in Chronosphere, starting with a robust, pre-trained model like BERT and employing strategies for incremental learning and broad dataset training might be your best approach. This allows the model to remain flexible and adaptive, generating high-quality questions across a wide range of subjects.
+Given the varied nature of potential input data in Memosphere, starting with a robust, pre-trained model like BERT and employing strategies for incremental learning and broad dataset training might be your best approach. This allows the model to remain flexible and adaptive, generating high-quality questions across a wide range of subjects.
 
 
 ## Embedding

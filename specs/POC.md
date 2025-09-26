@@ -1,4 +1,4 @@
-Steps to Build a POC for Chronosphere
+Steps to Build a POC for Memosphere
 
 1. Define the Scope of the POC
 Focus on text-based question generation to keep the POC manageable.

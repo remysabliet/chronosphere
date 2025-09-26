@@ -1,4 +1,4 @@
-For your project Chronosphere, which aims to be a dynamic learning tool leveraging AI for personalized question generation and reinforcement of weak areas in students' knowledge, here's a high-level plan incorporating Next.js, TypeScript, and additional technologies to ensure scalability and functionality:
+For your project Memosphere, which aims to be a dynamic learning tool leveraging AI for personalized question generation and reinforcement of weak areas in students' knowledge, here's a high-level plan incorporating Next.js, TypeScript, and additional technologies to ensure scalability and functionality:
 
 1. Project Structure and Technologies
 Frontend: Next.js with TypeScript for building a scalable, server-rendered UI.
@@ -38,4 +38,4 @@ Phase 5: Optimize based on user feedback and prepare for scaling.
 7. Considerations for Future Expansion
 API First Design: Ensure all functionalities are accessible via APIs, which makes it easier to integrate with other applications and platforms in the future.
 Internationalization: Prepare the application for multi-language support, essential for global reach.
-This plan provides a robust foundation for Chronosphere, focusing on scalability, user engagement, and effective learning through personalized educational content. If you need specific code examples or deeper dives into any of these areas, feel free to ask!
+This plan provides a robust foundation for Memosphere, focusing on scalability, user engagement, and effective learning through personalized educational content. If you need specific code examples or deeper dives into any of these areas, feel free to ask!

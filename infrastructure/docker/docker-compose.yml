@@ -1,0 +1,313 @@
+# =============================================================================
+# Docker Compose for Memosphere Local Development
+# Single file for local development only
+# =============================================================================
+
+services:
+  # =============================================================================
+  # Database Services
+  # =============================================================================
+  
+  postgres:
+    image: postgres:17-alpine
+    container_name: memosphere-postgres-${ENVIRONMENT:-development}
+    environment:
+      POSTGRES_DB: memosphere_${ENVIRONMENT:-dev}
+      POSTGRES_USER: memosphere
+      POSTGRES_PASSWORD: memosphere_secure_dev_2025!
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_${ENVIRONMENT:-dev}_data:/var/lib/postgresql/data
+    networks:
+      - memosphere-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U memosphere"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+  
+
+  migration-service:
+    build:
+      context: ../../
+      dockerfile: packages/migration-service/Dockerfile
+    container_name: memosphere-migration-service-${ENVIRONMENT:-development}
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      DATABASE_URL: postgresql://memosphere:memosphere_secure_dev_2025!@postgres:5432/memosphere_${ENVIRONMENT:-dev}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - memosphere-network
+    command: pnpm run migrate:latest
+    restart: "no"
+
+  redis:
+    image: redis:7-alpine
+    container_name: memosphere-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - memosphere-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # =============================================================================
+  # Node.js Microservices
+  # =============================================================================
+
+  user-management-service:
+    build:
+      context: ../../
+      dockerfile: packages/user-management-service/Dockerfile
+    container_name: memosphere-user-management
+    environment:
+      NODE_ENV: development
+      PORT: 3001
+      DATABASE_URL: postgresql://memosphere:memosphere_dev@postgres:5432/memosphere_dev
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: dev_jwt_secret_key_here
+      JWT_EXPIRES_IN: 24h
+    ports:
+      - "3001:3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migration-service:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    networks:
+      - memosphere-network
+    volumes:
+      - ../../packages/user-management-service:/app/packages/user-management-service
+      - ../../packages/shared:/app/packages/shared
+    restart: unless-stopped
+
+  content-management-service:
+    build:
+      context: ../../
+      dockerfile: packages/content-management-service/Dockerfile
+    container_name: memosphere-content-management
+    environment:
+      NODE_ENV: development
+      PORT: 3002
+      DATABASE_URL: postgresql://memosphere:memosphere_dev@postgres:5432/memosphere_dev
+      REDIS_URL: redis://redis:6379
+    ports:
+      - "3002:3002"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migration-service:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    networks:
+      - memosphere-network
+    volumes:
+      - ../../packages/content-management-service:/app/packages/content-management-service
+      - ../../packages/shared:/app/packages/shared
+    restart: unless-stopped
+
+  quiz-session-service:
+    build:
+      context: ../../
+      dockerfile: packages/quiz-session-service/Dockerfile
+    container_name: memosphere-quiz-session
+    environment:
+      NODE_ENV: development
+      PORT: 3003
+      DATABASE_URL: postgresql://memosphere:memosphere_dev@postgres:5432/memosphere_dev
+      REDIS_URL: redis://redis:6379
+      USER_MANAGEMENT_URL: http://user-management-service:3001
+      LEARNING_ENGINE_URL: http://learning-engine-service:8002
+      QUESTION_GENERATION_URL: http://question-generation-service:8001
+    ports:
+      - "3003:3003"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      user-management-service:
+        condition: service_started
+      learning-engine-service:
+        condition: service_started
+      question-generation-service:
+        condition: service_started
+      migration-service:
+        condition: service_completed_successfully
+    networks:
+      - memosphere-network
+    volumes:
+      - ../../packages/quiz-session-service:/app/packages/quiz-session-service
+      - ../../packages/shared:/app/packages/shared
+    restart: unless-stopped
+
+  analytics-service:
+    build:
+      context: ../../
+      dockerfile: packages/analytics-service/Dockerfile
+    container_name: memosphere-analytics
+    environment:
+      NODE_ENV: development
+      PORT: 3004
+      DATABASE_URL: postgresql://memosphere:memosphere_dev@postgres:5432/memosphere_dev
+      REDIS_URL: redis://redis:6379
+    ports:
+      - "3004:3004"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migration-service:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    networks:
+      - memosphere-network
+    volumes:
+      - ../../packages/analytics-service:/app/packages/analytics-service
+      - ../../packages/shared:/app/packages/shared
+    restart: unless-stopped
+
+  notification-service:
+    build:
+      context: ../../
+      dockerfile: packages/notification-service/Dockerfile
+    container_name: memosphere-notification
+    environment:
+      NODE_ENV: development
+      PORT: 3005
+      DATABASE_URL: postgresql://memosphere:memosphere_dev@postgres:5432/memosphere_dev
+      REDIS_URL: redis://redis:6379
+      SMTP_HOST: smtp.gmail.com
+      SMTP_PORT: 587
+      SMTP_USER: dev_email@gmail.com
+      SMTP_PASS: dev_app_password
+    ports:
+      - "3005:3005"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migration-service:
+        condition: service_completed_successfully
+    networks:
+      - memosphere-network
+    volumes:
+      - ../../packages/notification-service:/app/packages/notification-service
+      - ../../packages/shared:/app/packages/shared
+    restart: unless-stopped
+
+  # =============================================================================
+  # Python Microservices
+  # =============================================================================
+
+  question-generation-service:
+    build:
+      context: ../../
+      dockerfile: packages/question-generation-service/Dockerfile
+    container_name: memosphere-question-generation
+    environment:
+      NODE_ENV: development
+      PORT: 8001
+      DATABASE_URL: postgresql://memosphere:memosphere_dev@postgres:5432/memosphere_dev
+      REDIS_URL: redis://redis:6379
+      MISTRAL_API_KEY: your_dev_mistral_api_key_here
+      OPENAI_API_KEY: your_dev_openai_api_key_here
+    ports:
+      - "8001:8001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migration-service:
+        condition: service_completed_successfully
+    networks:
+      - memosphere-network
+    volumes:
+      - ../../packages/question-generation-service:/app/packages/question-generation-service
+    restart: unless-stopped
+
+  learning-engine-service:
+    build:
+      context: ../../
+      dockerfile: packages/learning-engine-service/Dockerfile
+    container_name: memosphere-learning-engine
+    environment:
+      NODE_ENV: development
+      PORT: 8002
+      DATABASE_URL: postgresql://memosphere:memosphere_dev@postgres:5432/memosphere_dev
+      REDIS_URL: redis://redis:6379
+      BKT_LEARNING_RATE: 0.1
+      BKT_MASTERY_THRESHOLD: 0.8
+      IRT_ABILITY_RANGE_MIN: -3.0
+      IRT_ABILITY_RANGE_MAX: 3.0
+    ports:
+      - "8002:8002"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migration-service:
+        condition: service_completed_successfully
+    networks:
+      - memosphere-network
+    volumes:
+      - ../../packages/learning-engine-service:/app/packages/learning-engine-service
+    restart: unless-stopped
+
+  # =============================================================================
+  # API Gateway
+  # =============================================================================
+
+  nginx:
+    image: nginx:alpine
+    container_name: memosphere-nginx
+    ports:
+      - "80:80"
+    volumes:
+      - nginx_config:/etc/nginx/nginx.conf
+    depends_on:
+      migration-service:           # ✅ Only needs migrations to complete
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    networks:
+      - memosphere-network
+    restart: unless-stopped
+
+# =============================================================================
+# Networks and Volumes
+# =============================================================================
+
+networks:
+  memosphere-network:
+    driver: bridge
+    name: memosphere-network
+
+volumes:
+  # Database data - Docker volumes (recommended)
+  postgres_dev_data:
+  postgres_test_data:
+  redis_data:
+  
+  # Configuration files - Bind mounts (for easy editing)
+  nginx_config:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ../nginx/nginx.conf
+ 

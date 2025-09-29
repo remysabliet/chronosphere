@@ -1,0 +1,98 @@
+[tool.poetry]
+name = "learning-engine-service"
+version = "1.0.0"
+description = "BKT and IRT learning algorithms with adaptive decision engine"
+authors = ["Rémy SABLIET <sabliet@gmail.com>"]
+license = "ISC"
+readme = "README.md"
+packages = [{include = "packages/learning_engine_service"}]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+fastapi = "^0.104.0"
+uvicorn = {extras = ["standard"], version = "^0.24.0"}
+pydantic = "^2.5.0"
+httpx = "^0.25.0"
+python-multipart = "^0.0.6"
+python-jose = {extras = ["cryptography"], version = "^3.3.0"}
+passlib = {extras = ["bcrypt"], version = "^1.7.4"}
+sqlalchemy = "^2.0.0"
+psycopg2-binary = "^2.9.0"
+redis = "^5.0.0"
+python-dotenv = "^1.0.0"
+# Machine Learning & Statistics
+numpy = "^1.24.0"
+scipy = "^1.11.0"
+scikit-learn = "^1.3.0"
+pandas = "^2.0.0"
+statsmodels = "^0.14.0"
+# BKT and IRT specific libraries
+pyirt = "^0.4.0"
+bkt = "^0.1.0"
+# Mathematical computations
+sympy = "^1.12.0"
+# Time series and decay calculations
+python-dateutil = "^2.8.0"
+# JSON handling for complex data structures
+orjson = "^3.9.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.4.0"
+pytest-asyncio = "^0.21.0"
+pytest-cov = "^4.1.0"
+black = "^23.0.0"
+isort = "^5.12.0"
+flake8 = "^6.0.0"
+mypy = "^1.7.0"
+pre-commit = "^3.5.0"
+# Testing ML algorithms
+hypothesis = "^6.92.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.scripts]
+start = "packages.learning_engine_service.main:main"
+
+# Shared tool configuration (aligned with Prettier)
+[tool.black]
+line-length = 80  # Same as Prettier printWidth
+target-version = ['py311']
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | build
+  | dist
+)/
+'''
+
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+line_length = 80  # Same as Prettier printWidth
+force_single_line = false
+combine_as_imports = true
+include_trailing_comma = true  # Same as Prettier trailingComma
+force_grid_wrap = 0
+use_parentheses = true
+ensure_newline_before_comments = true
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"

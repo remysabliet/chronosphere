@@ -1,0 +1,41 @@
+{
+  "name": "@memosphere/migration-service",
+  "version": "1.0.0",
+  "description": "Database migration service for Memosphere",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "migrate:make": "knex migrate:make",
+    "migrate:latest": "knex migrate:latest",
+    "migrate:rollback": "knex migrate:rollback",
+    "migrate:rollback:all": "knex migrate:rollback --all",
+    "migrate:status": "knex migrate:status",
+    "seed:make": "knex seed:make",
+    "seed:run": "knex seed:run",
+    "db:reset": "knex migrate:rollback --all && knex migrate:latest && knex seed:run",
+    "db:setup": "knex migrate:latest && knex seed:run",
+    "test:db:setup": "NODE_ENV=test knex migrate:latest && NODE_ENV=test knex seed:run",
+    "test:db:teardown": "NODE_ENV=test knex migrate:rollback:all",
+    "test:db:reset": "NODE_ENV=test knex migrate:rollback:all && NODE_ENV=test knex migrate:latest && NODE_ENV=test knex seed:run"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "pg": "^8.16.3"
+  },
+  "devDependencies": {
+    "knex": "^3.1.0",
+    "nodemon": "^3.1.0"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=10.0.0"
+  },
+  "keywords": [
+    "database",
+    "migrations",
+    "postgresql"
+  ],
+  "author": "Memosphere Team",
+  "license": "MIT"
+}

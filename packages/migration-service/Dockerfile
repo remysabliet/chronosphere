@@ -1,32 +1,29 @@
-# Database service Dockerfile - Updated for pnpm
+# Database migration service Dockerfile - Local Development Optimized
 FROM node:20-alpine
 
-# Install pnpm
-RUN npm install -g pnpm
+# Enable pnpm using built-in Corepack (faster than npm install -g)
+RUN corepack enable && corepack prepare pnpm@latest --activate
 
-# Set working directory
+# Set working directory to workspace root
 WORKDIR /app
 
-# Copy package files
-COPY package*.json pnpm-lock.yaml ./
+# Copy workspace configuration for better layer caching
+COPY pnpm-workspace.yaml ./
+COPY pnpm-lock.yaml ./
+COPY package.json ./
 
-# Install dependencies with pnpm
-RUN pnpm install --frozen-lockfile
+# Copy migration-service package.json
+COPY packages/migration-service/package.json ./packages/migration-service/
 
-# Copy source code
-COPY src/ ./src/
-COPY migrations/ ./migrations/
+# Install dependencies (no frozen-lockfile for dev flexibility)
+# Use --filter to only install migration-service dependencies
+RUN pnpm install --filter @memosphere/migration-service
 
-# Create non-root user
-RUN addgroup -g 1001 -S nodejs
-RUN adduser -S nodejs -u 1001
+# Copy migration service files
+COPY packages/migration-service/ ./packages/migration-service/
 
-# Change ownership
-RUN chown -R nodejs:nodejs /app
-USER nodejs
+# Set working directory to migration service
+WORKDIR /app/packages/migration-service
 
-# Expose port
-EXPOSE 3000
-
-# Default command
+# Default command - run migrations
 CMD ["pnpm", "run", "migrate:latest"]

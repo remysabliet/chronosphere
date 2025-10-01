@@ -17,6 +17,7 @@
   # Copy workspace configuration files (for dependency resolution)
   COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
   COPY tsconfig.json ./
+  COPY tools/configs ./tools/configs 
   
   # Copy shared package (dependency)
   COPY packages/shared ./packages/shared
@@ -45,6 +46,9 @@
   # Stage 3: Production - Copy everything from build
   # -----------------------------------------------------------------------------
   FROM node:20-alpine AS production
+  
+  # Install pnpm
+  RUN corepack enable && corepack prepare pnpm@8.12.0 --activate
   
   # Create non-root user for security
   RUN addgroup -g 1001 -S nodejs && \

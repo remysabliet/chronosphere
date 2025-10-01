@@ -2,12 +2,12 @@
 export default {
   development: {
     client: 'postgresql',
-    connection: {
-      host: 'localhost',
-      port: 5432,
-      database: 'memosphere_dev',
-      user: 'memosphere',
-      password: 'memosphere_secure_dev_2025!'
+    connection: process.env.DATABASE_URL || {
+      host: process.env.DB_HOST || 'localhost',
+      port: parseInt(process.env.DB_PORT || '5432'),
+      database: process.env.DB_NAME || 'memosphere_dev',
+      user: process.env.DB_USER || 'memosphere',
+      password: process.env.DB_PASSWORD || 'memosphere_secure_dev_2025!'
     },
     migrations: {
       directory: './migrations',
@@ -19,12 +19,12 @@ export default {
   },
   test: {
     client: 'postgresql',
-    connection: {
-      host: 'localhost',
-      port: 5432,
-      database: 'memosphere_test',
-      user: 'memosphere',
-      password: 'memosphere_secure_dev_2025!'
+    connection: process.env.DATABASE_URL || {
+      host: process.env.DB_HOST || 'localhost',
+      port: parseInt(process.env.DB_PORT || '5432'),
+      database: process.env.DB_NAME || 'memosphere_test',
+      user: process.env.DB_USER || 'memosphere',
+      password: process.env.DB_PASSWORD || 'memosphere_secure_dev_2025!'
     },
     migrations: {
       directory: './migrations',

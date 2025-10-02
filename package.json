@@ -24,22 +24,24 @@
     "test:db:create": "cd infrastructure/docker && ENVIRONMENT=test NODE_ENV=test docker-compose up -d postgres redis && sleep 10 && cd ../../packages/migration-service && NODE_ENV=test pnpm run migrate:latest",
     "test:db:destroy": "cd infrastructure/docker && ENVIRONMENT=test docker-compose down -v",
     "test:watch": "vitest --config vitest.unit.config.js",
-    "test:ui": "vitest --ui"
+    "test:ui": "vitest --ui",
+    "prepare": "husky"
   },
   "devDependencies": {
+    "@playwright/test": "^1.40.0",
+    "@types/supertest": "^2.0.0",
     "@typescript-eslint/eslint-plugin": "^8.44.1",
     "@typescript-eslint/parser": "^8.44.1",
+    "@vitest/ui": "^1.0.0",
     "eslint": "^9.36.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-import": "^2.32.0",
-    "prettier": "^3.6.2",
-    "typescript": "^5.9.2",
-    "vitest": "^1.0.0",
-    "@vitest/ui": "^1.0.0",
+    "husky": "^9.1.7",
     "playwright": "^1.40.0",
-    "@playwright/test": "^1.40.0",
-    "@types/supertest": "^2.0.0",
-    "supertest": "^6.0.0"
+    "prettier": "^3.6.2",
+    "supertest": "^6.0.0",
+    "typescript": "^5.9.2",
+    "vitest": "^1.0.0"
   },
   "workspaces": [
     "packages/*",

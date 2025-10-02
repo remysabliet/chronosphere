@@ -15,13 +15,16 @@
     "type-check": "tsc --noEmit",
     "dev:up": "cd infrastructure/docker && ENVIRONMENT=development docker-compose up -d",
     "dev:down": "cd infrastructure/docker && ENVIRONMENT=development docker-compose down",
-    "test:up": "cd infrastructure/docker && ENVIRONMENT=test POSTGRES_PORT=5433 docker-compose up -d postgres",
-    "test:down": "cd infrastructure/docker && ENVIRONMENT=test docker-compose down",
-    "test:db:setup": "cd infrastructure/docker && ENVIRONMENT=test NODE_ENV=test docker-compose up -d postgres && sleep 5 && cd ../../packages/migration-service && NODE_ENV=test pnpm run migrate:latest && NODE_ENV=test pnpm run seed:run",
-    "test:db:teardown": "cd infrastructure/docker && ENVIRONMENT=test docker-compose down",
     "test": "pnpm run test:unit && pnpm run test:integration",
-    "test:unit": "pnpm --filter @memosphere/* run test:unit",
-    "test:integration": "pnpm --filter @memosphere/* run test:integration"
+    "test:unit": "vitest run --config vitest.unit.config.js && pnpm run test:python:unit",
+    "test:integration": "pnpm run test:db:create && vitest run --config vitest.integration.config.js && pnpm run test:python:integration && pnpm run test:db:destroy",
+    "test:e2e": "pnpm run test:db:create && playwright test && pnpm run test:db:destroy",
+    "test:python:unit": "cd packages/learning-engine-service && poetry run pytest tests/unit/ && cd ../question-generation-service && poetry run pytest tests/unit/",
+    "test:python:integration": "cd packages/learning-engine-service && poetry run pytest tests/integration/ && cd ../question-generation-service && poetry run pytest tests/integration/",
+    "test:db:create": "cd infrastructure/docker && ENVIRONMENT=test NODE_ENV=test docker-compose up -d postgres redis && sleep 10 && cd ../../packages/migration-service && NODE_ENV=test pnpm run migrate:latest",
+    "test:db:destroy": "cd infrastructure/docker && ENVIRONMENT=test docker-compose down -v",
+    "test:watch": "vitest --config vitest.unit.config.js",
+    "test:ui": "vitest --ui"
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^8.44.1",
@@ -30,7 +33,13 @@
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-import": "^2.32.0",
     "prettier": "^3.6.2",
-    "typescript": "^5.9.2"
+    "typescript": "^5.9.2",
+    "vitest": "^1.0.0",
+    "@vitest/ui": "^1.0.0",
+    "playwright": "^1.40.0",
+    "@playwright/test": "^1.40.0",
+    "@types/supertest": "^2.0.0",
+    "supertest": "^6.0.0"
   },
   "workspaces": [
     "packages/*",

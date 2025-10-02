@@ -27,7 +27,7 @@ RUN pip install --no-cache-dir poetry==1.7.1
 
 # Configure Poetry
 ENV POETRY_NO_INTERACTION=1 \
-    POETRY_VENV_IN_PROJECT=1 \
+    POETRY_VIRTUALENVS_IN_PROJECT=1 \
     POETRY_CACHE_DIR=/tmp/poetry_cache
 
 # Set working directory

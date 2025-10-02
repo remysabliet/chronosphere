@@ -71,5 +71,9 @@
   # Expose port for analytics service
   EXPOSE 3004
   
-  # No Docker health check - let Kubernetes handle it
+  # Health check
+  HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD wget --no-verbose --tries=1 --spider http://localhost:3004/health || exit 1
+  
+  # Start the analytics service
   CMD ["pnpm", "--filter", "@memosphere/analytics-service", "start"]

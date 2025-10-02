@@ -71,5 +71,9 @@
   # Expose port for notification service
   EXPOSE 3005
   
-  # No Docker health check - let Kubernetes handle it
+  # Health check
+  HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD wget --no-verbose --tries=1 --spider http://localhost:3005/health || exit 1
+  
+  # Start the notification service
   CMD ["pnpm", "--filter", "@memosphere/notification-service", "start"]

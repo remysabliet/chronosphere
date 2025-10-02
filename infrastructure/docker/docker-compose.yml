@@ -77,6 +77,13 @@ services:
       JWT_EXPIRES_IN: 24h
     ports:
       - "3001:3001"
+    volumes:
+      # Mount source code for development
+      - ../../packages/user-management-service/src:/app/packages/user-management-service/src
+      # Preserve node_modules and package.json
+      - /app/packages/user-management-service/node_modules
+      - /app/node_modules
+    command: pnpm --filter @memosphere/user-management-service dev
     depends_on:
       postgres:
         condition: service_healthy
@@ -100,6 +107,13 @@ services:
       REDIS_URL: redis://redis:6379
     ports:
       - "3002:3002"
+    volumes:
+      # Mount source code for development
+      - ../../packages/content-management-service/src:/app/packages/content-management-service/src
+      # Preserve node_modules and package.json
+      - /app/packages/content-management-service/node_modules
+      - /app/node_modules
+    command: pnpm --filter @memosphere/content-management-service dev
     depends_on:
       postgres:
         condition: service_healthy
@@ -126,6 +140,10 @@ services:
       QUESTION_GENERATION_URL: http://question-generation-service:8001
     ports:
       - "3003:3003"
+    volumes:
+      # Mount entire package for development (your original approach)
+      - ../../packages/quiz-session-service:/app/packages/quiz-session-service
+    command: pnpm --filter @memosphere/quiz-session-service dev
     depends_on:
       postgres:
         condition: service_healthy
@@ -155,6 +173,13 @@ services:
       REDIS_URL: redis://redis:6379
     ports:
       - "3004:3004"
+    volumes:
+      # Mount source code for development
+      - ../../packages/analytics-service/src:/app/packages/analytics-service/src
+      # Preserve node_modules and package.json
+      - /app/packages/analytics-service/node_modules
+      - /app/node_modules
+    command: pnpm --filter @memosphere/analytics-service dev
     depends_on:
       postgres:
         condition: service_healthy
@@ -182,6 +207,13 @@ services:
       SMTP_PASS: dev_app_password
     ports:
       - "3005:3005"
+    volumes:
+      # Mount source code for development
+      - ../../packages/notification-service/src:/app/packages/notification-service/src
+      # Preserve node_modules and package.json
+      - /app/packages/notification-service/node_modules
+      - /app/node_modules
+    command: pnpm --filter @memosphere/notification-service dev
     depends_on:
       postgres:
         condition: service_healthy

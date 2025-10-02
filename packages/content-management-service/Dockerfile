@@ -71,5 +71,9 @@
   # Expose port for content-management service
   EXPOSE 3002
   
-  # No Docker health check - let Kubernetes handle it
+  # Health check
+  HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD wget --no-verbose --tries=1 --spider http://localhost:3002/health || exit 1
+  
+  # Start the content-management service
   CMD ["pnpm", "--filter", "@memosphere/content-management-service", "start"]

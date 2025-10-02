@@ -71,5 +71,9 @@
   # Expose port for quiz-session service
   EXPOSE 3003
   
-  # No Docker health check - let Kubernetes handle it
+  # Health check
+  HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD wget --no-verbose --tries=1 --spider http://localhost:3003/health || exit 1
+  
+  # Start the quiz-session service
   CMD ["pnpm", "--filter", "@memosphere/quiz-session-service", "start"]

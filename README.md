@@ -2,4 +2,4 @@
 Memosphere is a AI-driven adaptive learning platform open to all audience.
 
 ## Get started
-- pnpm i
+- pnpm i# Test trigger

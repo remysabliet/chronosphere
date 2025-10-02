@@ -29,8 +29,16 @@ export async function up(knex) {
     table.primary(['user_id', 'concept_id', 'bloom_level']);
 
     // Foreign key constraints
-    table.foreign('user_id').references('user_id').inTable('users').onDelete('CASCADE');
-    table.foreign('concept_id').references('id').inTable('learning_units').onDelete('CASCADE');
+    table
+      .foreign('user_id')
+      .references('user_id')
+      .inTable('users')
+      .onDelete('CASCADE');
+    table
+      .foreign('concept_id')
+      .references('id')
+      .inTable('learning_units')
+      .onDelete('CASCADE');
 
     // Indexes
     table.index(['user_id', 'concept_id', 'bloom_level']);
@@ -39,8 +47,16 @@ export async function up(knex) {
     table.index(['decay_status', 'last_reinforced']);
 
     // Check constraints
-    table.check('decay_status IN (?, ?, ?)', ['Active', 'Expired', 'Pending review']);
-    table.check('mastery_status IN (?, ?, ?)', ['In Progress', 'Mastered', 'Expired']);
+    table.check('decay_status IN (?, ?, ?)', [
+      'Active',
+      'Expired',
+      'Pending review',
+    ]);
+    table.check('mastery_status IN (?, ?, ?)', [
+      'In Progress',
+      'Mastered',
+      'Expired',
+    ]);
   });
 }
 

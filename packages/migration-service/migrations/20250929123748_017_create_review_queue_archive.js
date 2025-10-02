@@ -15,9 +15,21 @@ export async function up(knex) {
     table.timestamp('archived_at').defaultTo(knex.fn.now());
 
     // Foreign key constraints
-    table.foreign('user_id').references('user_id').inTable('users').onDelete('CASCADE');
-    table.foreign('concept_id').references('id').inTable('learning_units').onDelete('CASCADE');
-    table.foreign('question_id').references('id').inTable('questions').onDelete('CASCADE');
+    table
+      .foreign('user_id')
+      .references('user_id')
+      .inTable('users')
+      .onDelete('CASCADE');
+    table
+      .foreign('concept_id')
+      .references('id')
+      .inTable('learning_units')
+      .onDelete('CASCADE');
+    table
+      .foreign('question_id')
+      .references('id')
+      .inTable('questions')
+      .onDelete('CASCADE');
 
     // Indexes
     table.index(['user_id', 'concept_id', 'bloom_level']);

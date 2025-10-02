@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [main, develop]
   pull_request:
-    branches: [ main, develop ]
+    branches: [main, develop]
 
 jobs:
   lint-and-typecheck:
@@ -145,7 +145,13 @@ jobs:
 
   test-e2e:
     runs-on: ubuntu-latest
-    needs: [test-unit-nodejs, test-unit-python, test-integration-nodejs, test-integration-python]
+    needs:
+      [
+        test-unit-nodejs,
+        test-unit-python,
+        test-integration-nodejs,
+        test-integration-python,
+      ]
     steps:
       - uses: actions/checkout@v4
       - name: Setup Node.js

@@ -22,7 +22,11 @@ export async function up(knex) {
     table.timestamp('updated_at').defaultTo(knex.fn.now());
 
     // Foreign key constraint
-    table.foreign('user_id').references('user_id').inTable('users').onDelete('CASCADE');
+    table
+      .foreign('user_id')
+      .references('user_id')
+      .inTable('users')
+      .onDelete('CASCADE');
 
     // Indexes
     table.index(['user_id']);
@@ -31,8 +35,16 @@ export async function up(knex) {
     table.index(['session_type']);
 
     // Check constraints
-    table.check('session_type IN (?, ?, ?)', ['learning', 'review', 'assessment']);
-    table.check('session_status IN (?, ?, ?)', ['active', 'completed', 'abandoned']);
+    table.check('session_type IN (?, ?, ?)', [
+      'learning',
+      'review',
+      'assessment',
+    ]);
+    table.check('session_status IN (?, ?, ?)', [
+      'active',
+      'completed',
+      'abandoned',
+    ]);
   });
 }
 

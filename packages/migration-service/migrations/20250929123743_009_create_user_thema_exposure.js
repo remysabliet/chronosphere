@@ -11,14 +11,23 @@ export async function up(knex) {
     table.primary(['user_id', 'thema']);
 
     // Foreign key constraint
-    table.foreign('user_id').references('user_id').inTable('users').onDelete('CASCADE');
+    table
+      .foreign('user_id')
+      .references('user_id')
+      .inTable('users')
+      .onDelete('CASCADE');
 
     // Indexes
     table.index(['user_id', 'thema']);
     table.index(['timestamp']);
 
     // Check constraint
-    table.check('exposure_level IN (?, ?, ?, ?)', ['Unseen', 'Recognized', 'Practiced', 'Mastered']);
+    table.check('exposure_level IN (?, ?, ?, ?)', [
+      'Unseen',
+      'Recognized',
+      'Practiced',
+      'Mastered',
+    ]);
   });
 }
 

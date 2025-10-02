@@ -3,15 +3,17 @@
 ## MVP Architecture Summary
 
 **Chosen MVP Stack:**
+
 - **Authentication**: Amazon Cognito (Free Tier: 50,000 MAUs)
 - **Compute**: Kubernetes on EC2 (Manual scaling, cost-effective)
 - **Database**: Amazon RDS PostgreSQL (Free Tier: 750 hrs/month on db.t4g.micro)
 - **Storage**: Amazon S3 (Free Tier: 5GB)
 - **Caching**: Amazon ElastiCache Redis (Optional for MVP)
 - **CI/CD**: GitHub Actions + Amazon ECR (Self-hosted runners, zero SaaS cost), EC2-hosted GitHub Runner
-- **API Gateway**: NGINX on Kubernetes on EC2 (Free, full control, future-proof) 
+- **API Gateway**: NGINX on Kubernetes on EC2 (Free, full control, future-proof)
 
 **Key Benefits:**
+
 - Cost-optimized using AWS Free Tier
 - Scalable foundation for future growth
 - Full control over infrastructure
@@ -21,41 +23,43 @@
 
 ## Architecture Comparison
 
-| Option              | Cost (MVP) | Complexity | Scalability | Future-Proof | Best For                  |
-|---------------------|------------|------------|-------------|---------------|---------------------------|
-| Serverless          | ✅ Lowest  | ✅ Minimal | ✅ Auto      | ⚠️ Limited     | Solo devs, MVPs           |
-| Kubernetes on EC2   | ⚠️ Low–Med | ⚠️ Moderate| ✅ Manual    | ✅ Flexible    | Devs wanting control      |
-| Amazon EKS          | ❌ High    | ❌ Complex | ✅ Enterprise| ✅ Very High   | Teams, production scale   |
-
+| Option            | Cost (MVP) | Complexity  | Scalability   | Future-Proof | Best For                |
+| ----------------- | ---------- | ----------- | ------------- | ------------ | ----------------------- |
+| Serverless        | ✅ Lowest  | ✅ Minimal  | ✅ Auto       | ⚠️ Limited   | Solo devs, MVPs         |
+| Kubernetes on EC2 | ⚠️ Low–Med | ⚠️ Moderate | ✅ Manual     | ✅ Flexible  | Devs wanting control    |
+| Amazon EKS        | ❌ High    | ❌ Complex  | ✅ Enterprise | ✅ Very High | Teams, production scale |
 
 -> Chose Kubernetes on EC2 because it is cheap and future-proof
 
-#  Database
+# Database
 
 # AWS Database Solutions Comparison (2025)
 
-| Solution           | Use Case (Workload Type)                          | Performance                                                | Scalability & Architecture                                                                 | Management                                                                 | **Estimated Relative Cost**                                                                 |
-|--------------------|---------------------------------------------------|------------------------------------------------------------|---------------------------------------------------------------------------------------------|---------------------------------------------------------------------------|---------------------------------------------------------------------------------------------|
-| **Amazon Aurora**  | **Mission-Critical OLTP**, High-Volume Transactions | ✅ Extremely High (Up to 5x faster than standard open-source) | ✅ Cloud-Native Auto-Scaling Storage (Up to 128TB), Serverless option                       | ✅ Very Low (Self-healing, fully managed)                          | **High** (Premium performance, consumption-based)                                           |
-| **Amazon RDS**     | **General Purpose OLTP**, Standard Web/App Backend | ✅ Good/Consistent (Engine & Instance Dependent)            | ⚠️ Provisioned Scaling (Vertical & Read Replicas), Up to 64TB storage                      | ✅ Low (Managed patching, backups, Multi-AZ failover)              | **Low–Medium** — Free Tier covers 750 hrs/month on `db.t4g.micro`, which is **preferred** for better performance and efficiency |
-| **Amazon Redshift**| **Data Warehousing/OLAP**, Large-Scale Analytics   | ✅ Very High for Analytical Queries (MPP, Columnar)         | ✅ Cluster Scaling (Node-based), Petabyte scale, Serverless option                         | ⚠️ Medium (Need to optimize queries/clusters)                      | **Variable (Lo–High)** — Serverless can be cost-efficient; clusters are expensive if always-on |
-| **RDBMS on EC2**   | **Full Control**, Specialized Licensing, Unique OS/Engine Needs | ❌ Highly Variable (Dependent on manual setup/tuning)       | ❌ Fully Manual (You manage all clustering, replication, and storage)                      | ❌ High (You manage OS, patching, security, backups, and HA)       | **Lo–Med** (Lowest AWS charges, but **Highest TCO** due to manual labor and maintenance)     |
+| Solution            | Use Case (Workload Type)                                        | Performance                                                   | Scalability & Architecture                                            | Management                                                   | **Estimated Relative Cost**                                                                                                     |
+| ------------------- | --------------------------------------------------------------- | ------------------------------------------------------------- | --------------------------------------------------------------------- | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
+| **Amazon Aurora**   | **Mission-Critical OLTP**, High-Volume Transactions             | ✅ Extremely High (Up to 5x faster than standard open-source) | ✅ Cloud-Native Auto-Scaling Storage (Up to 128TB), Serverless option | ✅ Very Low (Self-healing, fully managed)                    | **High** (Premium performance, consumption-based)                                                                               |
+| **Amazon RDS**      | **General Purpose OLTP**, Standard Web/App Backend              | ✅ Good/Consistent (Engine & Instance Dependent)              | ⚠️ Provisioned Scaling (Vertical & Read Replicas), Up to 64TB storage | ✅ Low (Managed patching, backups, Multi-AZ failover)        | **Low–Medium** — Free Tier covers 750 hrs/month on `db.t4g.micro`, which is **preferred** for better performance and efficiency |
+| **Amazon Redshift** | **Data Warehousing/OLAP**, Large-Scale Analytics                | ✅ Very High for Analytical Queries (MPP, Columnar)           | ✅ Cluster Scaling (Node-based), Petabyte scale, Serverless option    | ⚠️ Medium (Need to optimize queries/clusters)                | **Variable (Lo–High)** — Serverless can be cost-efficient; clusters are expensive if always-on                                  |
+| **RDBMS on EC2**    | **Full Control**, Specialized Licensing, Unique OS/Engine Needs | ❌ Highly Variable (Dependent on manual setup/tuning)         | ❌ Fully Manual (You manage all clustering, replication, and storage) | ❌ High (You manage OS, patching, security, backups, and HA) | **Lo–Med** (Lowest AWS charges, but **Highest TCO** due to manual labor and maintenance)                                        |
 
 ## Authentication Solution
 
 **✅ Chosen: Amazon Cognito with OAuth2 Social Login**
 
 ### Key Features
+
 - **Free Tier**: Up to 50,000 monthly active users (MAUs)
 - **Scalability**: Fully managed, auto-scales with user base
 - **Security**: Offloads password management, supports MFA, adaptive auth, and device tracking
 
 ### Supported Providers
+
 - **Built-in**: Google, Facebook, Apple, Amazon
 - **Custom**: LinkedIn, X (Twitter) via OpenID Connect or OAuth2
 - **Hosted UI**: Optional, simplifies login flow without building custom screens
 
 ### MVP Recommendations
+
 - Start with OAuth2 login only (Google, Apple, Facebook)
 - Add password-based login later if needed — Cognito supports both
 - Avoid SMS-based MFA initially to prevent hidden costs
@@ -63,19 +67,20 @@
 
 # API Gateway Options Comparison (MVP + Future-Proofing)
 
-| Solution              | Cost Model                     | Scalability         | Management Overhead     | Features & Extensibility       | Best For                        |
-|-----------------------|--------------------------------|---------------------|--------------------------|--------------------------------|----------------------------------|
-| **NGINX on EC2/K8s**  | ✅ Free (open-source) + EC2 cost | ✅ High (Kubernetes) | ❌ High (self-managed)   | ✅ Full control, caching, TLS  | ✅ Cost-effective, future-proof |
-| **Amazon API Gateway**| ❌ Pay-per-request (~$3.50/million) | ✅ Auto-scaled       | ✅ None (fully managed)  | ⚠️ Limited customization       | ⚠️ MVPs, low-traffic apps       |
-| **Kong Gateway (OSS)**| ✅ Free (self-hosted)           | ✅ High              | ⚠️ Medium (infra + plugins) | ✅ Plugin-rich, extensible     | Hybrid cloud, microservices     |
-| **Envoy + Istio**     | ❌ High (complex mesh)         | ✅ Very High         | ❌ Very High (complex ops) | ✅ Advanced routing, security  | Enterprise-scale service mesh   |
-| **Traefik**           | ✅ Free (lightweight)          | ✅ Good              | ⚠️ Medium (simple setup) | ✅ Dynamic config, TLS         | Lightweight container apps      |
+| Solution               | Cost Model                          | Scalability          | Management Overhead         | Features & Extensibility      | Best For                        |
+| ---------------------- | ----------------------------------- | -------------------- | --------------------------- | ----------------------------- | ------------------------------- |
+| **NGINX on EC2/K8s**   | ✅ Free (open-source) + EC2 cost    | ✅ High (Kubernetes) | ❌ High (self-managed)      | ✅ Full control, caching, TLS | ✅ Cost-effective, future-proof |
+| **Amazon API Gateway** | ❌ Pay-per-request (~$3.50/million) | ✅ Auto-scaled       | ✅ None (fully managed)     | ⚠️ Limited customization      | ⚠️ MVPs, low-traffic apps       |
+| **Kong Gateway (OSS)** | ✅ Free (self-hosted)               | ✅ High              | ⚠️ Medium (infra + plugins) | ✅ Plugin-rich, extensible    | Hybrid cloud, microservices     |
+| **Envoy + Istio**      | ❌ High (complex mesh)              | ✅ Very High         | ❌ Very High (complex ops)  | ✅ Advanced routing, security | Enterprise-scale service mesh   |
+| **Traefik**            | ✅ Free (lightweight)               | ✅ Good              | ⚠️ Medium (simple setup)    | ✅ Dynamic config, TLS        | Lightweight container apps      |
 
 ---
 
 ## ✅ MVP Recommendation
 
 > Use **NGINX on EC2 with Kubernetes** for your API gateway:
+
 - No per-request billing
 - Full control over routing, headers, TLS, and caching
 - Scales with your Kubernetes cluster
@@ -91,14 +96,14 @@ This CI/CD pipeline is designed to be **cost-effective**, **secure**, and **scal
 
 ## 🧱 Architecture Overview
 
-| Component            | Tool/Service                 | Role                                      |
-|---------------------|------------------------------|-------------------------------------------|
-| Source Control       | GitHub                       | Hosts application code and triggers CI/CD |
-| CI/CD Engine         | GitHub Actions (self-hosted) | Automates build/test/deploy workflows     |
-| Build Agent          | EC2-hosted GitHub Runner     | Executes CI jobs without billing minutes  |
-| Container Registry   | Amazon ECR                   | Stores private Docker images              |
-| Deployment Target    | Kubernetes on EC2            | Hosts application workloads               |
-| Secrets Management   | GitHub Secrets / SOPS        | Secures credentials and tokens            |
+| Component          | Tool/Service                 | Role                                      |
+| ------------------ | ---------------------------- | ----------------------------------------- |
+| Source Control     | GitHub                       | Hosts application code and triggers CI/CD |
+| CI/CD Engine       | GitHub Actions (self-hosted) | Automates build/test/deploy workflows     |
+| Build Agent        | EC2-hosted GitHub Runner     | Executes CI jobs without billing minutes  |
+| Container Registry | Amazon ECR                   | Stores private Docker images              |
+| Deployment Target  | Kubernetes on EC2            | Hosts application workloads               |
+| Secrets Management | GitHub Secrets / SOPS        | Secures credentials and tokens            |
 
 ---
 
@@ -131,12 +136,12 @@ This CI/CD pipeline is designed to be **cost-effective**, **secure**, and **scal
 
 ## 💸 Cost Optimization
 
-| Resource             | Strategy                     | Notes |
-|----------------------|------------------------------|-------|
-| GitHub Actions        | Self-hosted runner on EC2     | Unlimited minutes, no SaaS cost |
-| Amazon ECR            | Free tier (500 MB/month)      | Delete old images to stay lean |
-| EC2 Data Transfer     | Same-region ECR + GitHub      | Avoid cross-region and large outbound traffic |
-| Kubernetes Cluster    | EC2-based, no EKS billing     | Manual scaling and updates |
+| Resource           | Strategy                  | Notes                                         |
+| ------------------ | ------------------------- | --------------------------------------------- |
+| GitHub Actions     | Self-hosted runner on EC2 | Unlimited minutes, no SaaS cost               |
+| Amazon ECR         | Free tier (500 MB/month)  | Delete old images to stay lean                |
+| EC2 Data Transfer  | Same-region ECR + GitHub  | Avoid cross-region and large outbound traffic |
+| Kubernetes Cluster | EC2-based, no EKS billing | Manual scaling and updates                    |
 
 ---
 
@@ -152,6 +157,7 @@ This CI/CD pipeline is designed to be **cost-effective**, **secure**, and **scal
 ## ✅ MVP Summary
 
 > This CI/CD setup is ideal for MVPs:
+>
 > - Fully automated
 > - Zero SaaS cost
 > - Secure and private
@@ -160,12 +166,14 @@ This CI/CD pipeline is designed to be **cost-effective**, **secure**, and **scal
 # AI/ML Services
 
 **Primary Choice: Mistral Large API**
+
 - Handles all LLM tasks (question generation, summarization)
 - Can perform text preprocessing (key phrases, entities, syntax analysis)
 - Single API for all AI needs
 - Cost-effective for MVP
 
 **Future: Amazon Comprehend** (only if needed)
+
 - For high-volume text preprocessing
 - When you need faster, specialized NLP tasks
 - Custom model training requirements

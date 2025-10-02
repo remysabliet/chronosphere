@@ -8,7 +8,7 @@ This file contains Python functions referenced in the main workflow for easy ret
 def validate_question(question: dict) -> dict:
     """
     Validate a generated question against quality criteria.
-    
+
     Args:
         question: Dictionary containing question data with keys:
             - question_text: The question stem
@@ -20,7 +20,7 @@ def validate_question(question: dict) -> dict:
             - question_type: Type of question (e.g., "4-option MCQ")
             - guessing_c: IRT guessing parameter
             - language: Question language
-    
+
     Returns:
         dict: Validation result with status, failed_checks, score, and notes
     """
@@ -30,33 +30,33 @@ def validate_question(question: dict) -> dict:
         "score": 1.0,
         "notes": []
     }
-    
+
     # Content checks
     if not is_valid_text(question['question_text']):
         validation_result["failed_checks"].append("Invalid question text")
-    
+
     if not correct_in_options(question['correct_answer'], question['options']):
         validation_result["failed_checks"].append("Correct answer not in options")
-    
+
     # Alignment checks
     if not bloom_supported(question['bloom_level'], concept_id):
         validation_result["failed_checks"].append("Bloom level not supported")
-    
+
     if not difficulty_in_range(question['difficulty_b'], question['bloom_level']):
         validation_result["failed_checks"].append("Difficulty out of range")
-    
+
     # Technical checks
     if not discrimination_valid(question['discrimination_a']):
         validation_result["failed_checks"].append("Invalid discrimination")
-    
+
     if not guessing_valid(question['question_type'], question['guessing_c']):
         validation_result["failed_checks"].append("Invalid guessing rate")
-    
+
     # Determine final status
     if validation_result["failed_checks"]:
         validation_result["status"] = "Failed"
         validation_result["score"] = 1.0 - (len(validation_result["failed_checks"]) * 0.1)
-    
+
     return validation_result
 ```
 
@@ -79,7 +79,7 @@ def update_bkt(P_Ln, P_T, P_G, P_S, response_score, bloom_weight=1.0, skipped=Fa
 
     Returns:
     - Updated mastery probability (float, 0-1)
-    
+
     Note: bloom_weight parameter comes from the bloom_level_weights table
     """
     if skipped:

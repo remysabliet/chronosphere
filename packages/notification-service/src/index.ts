@@ -15,12 +15,14 @@ const server = http.createServer((req, res) => {
   }
 
   res.writeHead(200, { 'Content-Type': 'application/json' });
-  res.end(JSON.stringify({
-    message: 'Notification Service - Coming Soon',
-    endpoints: {
-      health: '/health'
-    }
-  }));
+  res.end(
+    JSON.stringify({
+      message: 'Notification Service - Coming Soon',
+      endpoints: {
+        health: '/health',
+      },
+    })
+  );
 });
 
 server.listen(PORT, () => {

@@ -28,6 +28,7 @@
 ## 🏗️ MVP Architecture Overview
 
 ### Frontend
+
 - **Framework**: Next.js 14+ with TypeScript
 - **UI**: Tailwind CSS + shadcn/ui / Radix
 - **State Management**: Zustand
@@ -35,6 +36,7 @@
 - **Charts**: Recharts (for basic analytics)
 
 ### Backend (Microservices)
+
 - **API Gateway**: Nginx (reverse proxy)
 - **Question Generation Service**: Python + FastAPI
 - **User Management Service**: Node.js + Express
@@ -42,6 +44,7 @@
 - **Content Management Service**: Node.js + Express
 
 ### AI/NLP
+
 - **Primary LLM**: Mistral Large API
   - Question generation from text inputs
   - Content summarization and analysis
@@ -49,6 +52,7 @@
   - Text preprocessing (key phrases, entities, syntax analysis)
 
 ### Database
+
 - **Relational DB**: PostgreSQL
   - Users, sessions, questions, performance
 - **Vector DB**: (Optional for MVP) Pinecone or Weaviate
@@ -57,6 +61,7 @@
   - Session management, frequently accessed questions
 
 ### Infrastructure
+
 - **Cloud Provider**: AWS
   - **Compute**: Kubernetes on EC2 (Manual scaling, cost-effective)
   - **Database**: Amazon RDS PostgreSQL (Free Tier: 750 hrs/month)
@@ -74,36 +79,36 @@
 ```ts
 const MVP_FEATURES = [
   // User Management
-  "User Registration & Login (OAuth2 Social Login)",
-  "User Profile Creation (Age, Profession, Education)",
-  "Role-Based Access Control (Learner, Admin, Moderator)",
-  
+  'User Registration & Login (OAuth2 Social Login)',
+  'User Profile Creation (Age, Profession, Education)',
+  'Role-Based Access Control (Learner, Admin, Moderator)',
+
   // Content Input & Processing
-  "Text Input for Question Generation",
-  "AI-Powered Question Generation from Text",
-  "Question Validation & Quality Control",
-  
+  'Text Input for Question Generation',
+  'AI-Powered Question Generation from Text',
+  'Question Validation & Quality Control',
+
   // Learning Experience
-  "Interactive Quiz Sessions",
-  "Multiple Question Types (MCQ, True/False, Fill-in-the-blanks)",
-  "Adaptive Question Selection",
-  "Real-time Performance Feedback",
-  
+  'Interactive Quiz Sessions',
+  'Multiple Question Types (MCQ, True/False, Fill-in-the-blanks)',
+  'Adaptive Question Selection',
+  'Real-time Performance Feedback',
+
   // Progress Tracking
-  "Session History & Analytics",
-  "Performance Metrics (Score, Response Time)",
-  "Weak Area Identification",
-  "Learning Progress Visualization",
-  
+  'Session History & Analytics',
+  'Performance Metrics (Score, Response Time)',
+  'Weak Area Identification',
+  'Learning Progress Visualization',
+
   // Spaced Repetition
-  "Memory Refresh Module",
-  "Review Queue Management",
-  "Mastery Tracking per Concept",
-  
+  'Memory Refresh Module',
+  'Review Queue Management',
+  'Mastery Tracking per Concept',
+
   // User Feedback
-  "Question Rating System (1-5 stars)",
-  "Question Flagging (Confusing, Incorrect, etc.)",
-  "Session Completion Feedback"
+  'Question Rating System (1-5 stars)',
+  'Question Flagging (Confusing, Incorrect, etc.)',
+  'Session Completion Feedback',
 ];
 ```
 
@@ -111,10 +116,12 @@ const MVP_FEATURES = [
 
 ## 🗓️ Development Phases & Time Estimates
 
-### **Phase 1: Project Foundation & Local Development Setup** 
+### **Phase 1: Project Foundation & Local Development Setup**
+
 **Duration: 2-3 weeks (80-120 hours)**
 
 #### 1.1 Development Environment Setup (16-24 hours)
+
 - **Local Development Stack** (8-12 hours)
   - Set up monorepo structure with pnpm workspaces
   - Configure TypeScript, ESLint, Prettier
@@ -128,6 +135,7 @@ const MVP_FEATURES = [
   - Implement database seeding scripts
 
 #### 1.2 Core Infrastructure Setup (24-36 hours)
+
 - **Database Schema Implementation** (16-24 hours)
   - Create all tables from `db-schema.md`
   - Implement foreign key constraints and indexes
@@ -141,6 +149,7 @@ const MVP_FEATURES = [
   - Implement role-based access control (RBAC)
 
 #### 1.3 Basic API Structure (24-36 hours)
+
 - **Microservices Foundation** (16-24 hours)
   - Set up User Management Service (Node.js + Express)
   - Set up Learning Engine Service (Python + FastAPI)
@@ -154,6 +163,7 @@ const MVP_FEATURES = [
   - Implement request routing and middleware
 
 #### 1.4 Frontend Foundation (16-24 hours)
+
 - **Next.js Application Setup** (8-12 hours)
   - Initialize Next.js 14+ with TypeScript
   - Configure Tailwind CSS and shadcn/ui components
@@ -169,9 +179,11 @@ const MVP_FEATURES = [
 ---
 
 ### **Phase 2: Core Learning Engine Development**
+
 **Duration: 3-4 weeks (120-160 hours)**
 
 #### 2.1 AI Integration & Question Generation (40-56 hours)
+
 - **Mistral API Integration** (16-24 hours)
   - Set up Mistral Large API client
   - Implement API rate limiting and error handling
@@ -191,6 +203,7 @@ const MVP_FEATURES = [
   - Set up content moderation tools
 
 #### 2.2 Learning Algorithms Implementation (40-56 hours)
+
 - **BKT Algorithm Implementation** (16-24 hours)
   - Implement `update_bkt()` function from `python-functions.md`
   - Create mastery tracking system
@@ -210,6 +223,7 @@ const MVP_FEATURES = [
   - Create spaced repetition scheduling
 
 #### 2.3 Quiz Session Management (24-32 hours)
+
 - **Session Lifecycle** (12-16 hours)
   - Implement session initialization
   - Create question delivery system
@@ -223,6 +237,7 @@ const MVP_FEATURES = [
   - Create session analytics
 
 #### 2.4 User Experience Features (16-24 hours)
+
 - **Interactive Quiz Interface** (8-12 hours)
   - Build question display components
   - Create answer selection interface
@@ -238,9 +253,11 @@ const MVP_FEATURES = [
 ---
 
 ### **Phase 3: Advanced Features & Analytics**
+
 **Duration: 2-3 weeks (80-120 hours)**
 
 #### 3.1 Analytics & Reporting (32-48 hours)
+
 - **Performance Analytics** (16-24 hours)
   - Implement session analytics dashboard
   - Create mastery progression tracking
@@ -254,6 +271,7 @@ const MVP_FEATURES = [
   - Build system health monitoring
 
 #### 3.2 Advanced Learning Features (24-36 hours)
+
 - **Spaced Repetition System** (12-18 hours)
   - Implement review queue management
   - Create decay threshold calculations
@@ -267,6 +285,7 @@ const MVP_FEATURES = [
   - Create personalized recommendations
 
 #### 3.3 Data Management & Optimization (24-36 hours)
+
 - **Caching Strategy** (8-12 hours)
   - Implement Redis caching for frequently accessed data
   - Create cache invalidation strategies
@@ -288,9 +307,11 @@ const MVP_FEATURES = [
 ---
 
 ### **Phase 4: Testing & Quality Assurance**
+
 **Duration: 2-3 weeks (80-120 hours)**
 
 #### 4.1 Testing Implementation (40-56 hours)
+
 - **Unit Testing** (16-24 hours)
   - Write tests for all Python functions
   - Create Node.js service tests
@@ -310,6 +331,7 @@ const MVP_FEATURES = [
   - Test AI service response times
 
 #### 4.2 Security & Compliance (24-32 hours)
+
 - **Security Implementation** (16-24 hours)
   - Implement input validation and sanitization
   - Create SQL injection prevention
@@ -323,6 +345,7 @@ const MVP_FEATURES = [
   - Create data retention policies
 
 #### 4.3 Bug Fixing & Optimization (16-24 hours)
+
 - **Bug Resolution** (8-12 hours)
   - Fix identified bugs and issues
   - Optimize performance bottlenecks
@@ -338,9 +361,11 @@ const MVP_FEATURES = [
 ---
 
 ### **Phase 5: Cloud Infrastructure & Deployment**
+
 **Duration: 2-3 weeks (80-120 hours)**
 
 #### 5.1 AWS Infrastructure Setup (32-48 hours)
+
 - **EC2 & Kubernetes Setup** (16-24 hours)
   - Set up EC2 instances for Kubernetes cluster
   - Install and configure Kubernetes
@@ -354,6 +379,7 @@ const MVP_FEATURES = [
   - Implement backup and recovery
 
 #### 5.2 CI/CD Pipeline Implementation (24-32 hours)
+
 - **GitHub Actions Setup** (12-16 hours)
   - Configure self-hosted GitHub runners on EC2
   - Set up automated testing workflows
@@ -367,6 +393,7 @@ const MVP_FEATURES = [
   - Set up monitoring and health checks
 
 #### 5.3 Production Configuration (24-40 hours)
+
 - **Security & Monitoring** (12-20 hours)
   - Configure SSL/TLS certificates
   - Set up CloudWatch monitoring
@@ -382,9 +409,11 @@ const MVP_FEATURES = [
 ---
 
 ### **Phase 6: Launch Preparation & Documentation**
+
 **Duration: 1-2 weeks (40-80 hours)**
 
 #### 6.1 Documentation & Training (16-24 hours)
+
 - **Technical Documentation** (8-12 hours)
   - Create API documentation
   - Write deployment guides
@@ -398,6 +427,7 @@ const MVP_FEATURES = [
   - Write FAQ and support documentation
 
 #### 6.2 Launch Preparation (24-32 hours)
+
 - **Pre-launch Testing** (12-16 hours)
   - Conduct final testing and validation
   - Perform security audits
@@ -411,6 +441,7 @@ const MVP_FEATURES = [
   - Set up user onboarding
 
 #### 6.3 Post-Launch Support (16-24 hours)
+
 - **Monitoring & Maintenance** (8-12 hours)
   - Set up production monitoring
   - Create maintenance procedures
@@ -427,21 +458,22 @@ const MVP_FEATURES = [
 
 ## 📊 Total Time Estimate Summary
 
-| Phase | Duration | Hours | Key Deliverables |
-|-------|----------|-------|------------------|
-| **Phase 1: Foundation** | 2-3 weeks | 80-120h | Local dev environment, basic APIs, frontend foundation |
-| **Phase 2: Core Engine** | 3-4 weeks | 120-160h | AI integration, learning algorithms, quiz system |
-| **Phase 3: Advanced Features** | 2-3 weeks | 80-120h | Analytics, personalization, optimization |
-| **Phase 4: Testing & QA** | 2-3 weeks | 80-120h | Comprehensive testing, security, bug fixes |
-| **Phase 5: Cloud Deployment** | 2-3 weeks | 80-120h | AWS infrastructure, CI/CD, production setup |
-| **Phase 6: Launch Prep** | 1-2 weeks | 40-80h | Documentation, final testing, launch |
-| **TOTAL** | **12-18 weeks** | **480-720h** | **Complete MVP with production deployment** |
+| Phase                          | Duration        | Hours        | Key Deliverables                                       |
+| ------------------------------ | --------------- | ------------ | ------------------------------------------------------ |
+| **Phase 1: Foundation**        | 2-3 weeks       | 80-120h      | Local dev environment, basic APIs, frontend foundation |
+| **Phase 2: Core Engine**       | 3-4 weeks       | 120-160h     | AI integration, learning algorithms, quiz system       |
+| **Phase 3: Advanced Features** | 2-3 weeks       | 80-120h      | Analytics, personalization, optimization               |
+| **Phase 4: Testing & QA**      | 2-3 weeks       | 80-120h      | Comprehensive testing, security, bug fixes             |
+| **Phase 5: Cloud Deployment**  | 2-3 weeks       | 80-120h      | AWS infrastructure, CI/CD, production setup            |
+| **Phase 6: Launch Prep**       | 1-2 weeks       | 40-80h       | Documentation, final testing, launch                   |
+| **TOTAL**                      | **12-18 weeks** | **480-720h** | **Complete MVP with production deployment**            |
 
 ---
 
 ## 🎯 Recommended Team Structure
 
 ### **Solo Developer Approach** (480-720 hours)
+
 - **Full-stack developer** with experience in:
   - Node.js/TypeScript
   - Python/FastAPI
@@ -451,6 +483,7 @@ const MVP_FEATURES = [
   - AI/ML integration
 
 ### **Small Team Approach** (3-4 developers, 12-15 weeks)
+
 - **Backend Developer** (Python/Node.js): 200-250 hours
 - **Frontend Developer** (React/Next.js): 150-200 hours
 - **DevOps Engineer** (AWS/Kubernetes): 100-150 hours
@@ -472,6 +505,7 @@ const MVP_FEATURES = [
 ## 🔧 Development Principles
 
 ### SOLID Principles
+
 - **Single Responsibility**: Each microservice has one clear purpose
 - **Open/Closed**: Services are open for extension, closed for modification
 - **Liskov Substitution**: Services can be replaced without breaking functionality
@@ -479,12 +513,14 @@ const MVP_FEATURES = [
 - **Dependency Inversion**: Depend on abstractions, not concretions
 
 ### DRY Principles
+
 - **Reusable Components**: Shared UI components and utilities
 - **Common Libraries**: Shared business logic across services
 - **Template System**: Reusable prompt templates for AI
 - **Configuration Management**: Centralized configuration for all services
 
 ### Best Practices
+
 - **Clear Naming**: Descriptive function and variable names
 - **Consistent Formatting**: Standardized code style across all languages
 - **Logical Modularization**: Well-structured, maintainable code
@@ -496,6 +532,7 @@ const MVP_FEATURES = [
 ## 📈 Success Metrics
 
 ### Technical Metrics
+
 - **API Response Time**: < 200ms for question generation
 - **Database Performance**: < 100ms for user queries
 - **Frontend Load Time**: < 3 seconds initial load
@@ -503,6 +540,7 @@ const MVP_FEATURES = [
 - **Error Rate**: < 0.1% for critical operations
 
 ### Business Metrics
+
 - **User Engagement**: Average session duration > 15 minutes
 - **Learning Effectiveness**: 80%+ correct answers on mastered concepts
 - **User Satisfaction**: 4.5+ stars average rating
@@ -520,4 +558,3 @@ const MVP_FEATURES = [
 5. **Start with User Management Service** (Phase 1.3)
 
 This comprehensive plan provides a clear roadmap from local development to production deployment, ensuring a successful MVP launch within 12-18 weeks.
-

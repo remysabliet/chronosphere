@@ -20,6 +20,7 @@ Memosphere is an AI-powered adaptive learning platform that generates personaliz
 ## 🧱 MVP Architecture Overview
 
 ### Frontend
+
 - **Framework**: Next.js 14+ with TypeScript
 - **UI**: Tailwind CSS + shadcn/ui / Radix
 - **State Management**: Zustand
@@ -27,6 +28,7 @@ Memosphere is an AI-powered adaptive learning platform that generates personaliz
 - **Charts**: Recharts (for basic analytics)
 
 ### Backend (Microservices)
+
 - **API Gateway**: Nginx (reverse proxy)
 - **Question Generation Service**: Python + FastAPI
 - **User Management Service**: Node.js + Express
@@ -34,6 +36,7 @@ Memosphere is an AI-powered adaptive learning platform that generates personaliz
 - **Content Management Service**: Node.js + Express
 
 ### AI/NLP
+
 - **Primary LLM**: Mistral Large API
   - Question generation from text inputs
   - Content summarization and analysis
@@ -41,6 +44,7 @@ Memosphere is an AI-powered adaptive learning platform that generates personaliz
   - Text preprocessing (key phrases, entities, syntax analysis)
 
 ### Database
+
 - **Relational DB**: PostgreSQL
   - Users, sessions, questions, performance
 - **Vector DB**: (Optional for MVP) Pinecone or Weaviate
@@ -49,6 +53,7 @@ Memosphere is an AI-powered adaptive learning platform that generates personaliz
   - Session management, frequently accessed questions
 
 ### Infrastructure
+
 - **Cloud Provider**: AWS
   - **Compute**: Kubernetes on EC2 (Manual scaling, cost-effective)
   - **Database**: Amazon RDS PostgreSQL (Free Tier: 750 hrs/month)
@@ -66,34 +71,35 @@ Memosphere is an AI-powered adaptive learning platform that generates personaliz
 ```ts
 const MVP_FEATURES = [
   // User Management
-  "User Registration & Login (OAuth2 Social Login)",
-  "User Profile Creation (Age, Profession, Education)",
-  "Role-Based Access Control (Learner, Admin, Moderator)",
-  
+  'User Registration & Login (OAuth2 Social Login)',
+  'User Profile Creation (Age, Profession, Education)',
+  'Role-Based Access Control (Learner, Admin, Moderator)',
+
   // Content Input & Processing
-  "Text Input for Question Generation",
-  "AI-Powered Question Generation from Text",
-  "Question Validation & Quality Control",
-  
+  'Text Input for Question Generation',
+  'AI-Powered Question Generation from Text',
+  'Question Validation & Quality Control',
+
   // Learning Experience
-  "Interactive Quiz Sessions",
-  "Multiple Question Types (MCQ, True/False, Fill-in-the-blanks)",
-  "Adaptive Question Selection",
-  "Real-time Performance Feedback",
-  
+  'Interactive Quiz Sessions',
+  'Multiple Question Types (MCQ, True/False, Fill-in-the-blanks)',
+  'Adaptive Question Selection',
+  'Real-time Performance Feedback',
+
   // Progress Tracking
-  "Session History & Analytics",
-  "Performance Metrics (Score, Response Time)",
-  "Weak Area Identification",
-  "Learning Progress Visualization",
-  
+  'Session History & Analytics',
+  'Performance Metrics (Score, Response Time)',
+  'Weak Area Identification',
+  'Learning Progress Visualization',
+
   // Spaced Repetition
-  "Memory Refresh Module",
-  "Review Queue Management",
-  "Mastery Tracking per Concept",
-  
+  'Memory Refresh Module',
+  'Review Queue Management',
+  'Mastery Tracking per Concept',
+
   // User Feedback
-  "Question Rating System (1-5 stars)",
-  "Question Flagging (Confusing, Incorrect, etc.)",
-  "Session Completion Feedback"
+  'Question Rating System (1-5 stars)',
+  'Question Flagging (Confusing, Incorrect, etc.)',
+  'Session Completion Feedback',
 ];
+```

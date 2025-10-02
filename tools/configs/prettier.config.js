@@ -9,5 +9,5 @@ module.exports = {
   arrowParens: 'avoid',
   bracketSpacing: true,
   jsxSingleQuote: true,
-  quoteProps: 'as-needed'
+  quoteProps: 'as-needed',
 };

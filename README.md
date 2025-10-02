@@ -20,7 +20,7 @@ pnpm run test
 **Microservices Architecture** with TypeScript/Node.js and Python services:
 
 - **🎯 Quiz Session Service** - Real-time quiz orchestration
-- **👤 User Management** - Authentication & user profiles  
+- **👤 User Management** - Authentication & user profiles
 - **📚 Content Management** - Learning materials & curriculum
 - **📊 Analytics Service** - Learning insights & progress tracking
 - **🔔 Notification Service** - Real-time notifications
@@ -90,6 +90,7 @@ pnpm run format
 ## 🔧 Pre-commit Hooks
 
 Automated quality checks with Husky:
+
 - **Pre-commit**: Runs linting & formatting (`pnpm run lint:fix && pnpm run format`)
 - **Pre-push**: Runs unit & integration tests (`pnpm run test:unit`)
 
@@ -99,7 +100,6 @@ Automated quality checks with Husky:
 - [Database Schema](docs/db-schema.md)
 - [API Documentation](docs/api.md)
 - [Deployment Guide](docs/deployment.md)
-
 
 ## 📄 License
 

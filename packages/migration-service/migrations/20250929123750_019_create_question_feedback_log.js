@@ -10,9 +10,21 @@ export async function up(knex) {
     table.timestamp('timestamp').defaultTo(knex.fn.now());
 
     // Foreign key constraints
-    table.foreign('user_id').references('user_id').inTable('users').onDelete('CASCADE');
-    table.foreign('question_id').references('id').inTable('questions').onDelete('CASCADE');
-    table.foreign('response_id').references('id').inTable('user_responses').onDelete('CASCADE');
+    table
+      .foreign('user_id')
+      .references('user_id')
+      .inTable('users')
+      .onDelete('CASCADE');
+    table
+      .foreign('question_id')
+      .references('id')
+      .inTable('questions')
+      .onDelete('CASCADE');
+    table
+      .foreign('response_id')
+      .references('id')
+      .inTable('user_responses')
+      .onDelete('CASCADE');
 
     // Indexes
     table.index(['user_id']);
@@ -24,7 +36,12 @@ export async function up(knex) {
     // Check constraints
     table.check('rating BETWEEN ? AND ?', [1, 5]);
     table.check('flag_reason IN (?, ?, ?, ?, ?, ?)', [
-      'Confusing', 'Incorrect', 'Too Easy', 'Too Hard', 'Poorly Worded', 'Technical Error'
+      'Confusing',
+      'Incorrect',
+      'Too Easy',
+      'Too Hard',
+      'Poorly Worded',
+      'Technical Error',
     ]);
   });
 }

@@ -7,7 +7,7 @@ services:
   # =============================================================================
   # Database Services
   # =============================================================================
-  
+
   postgres:
     image: postgres:17-alpine
     container_name: memosphere-postgres-${ENVIRONMENT:-development}
@@ -16,17 +16,20 @@ services:
       POSTGRES_USER: memosphere
       POSTGRES_PASSWORD: memosphere_secure_dev_2025!
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - '${POSTGRES_PORT:-5432}:5432'
     volumes:
       - postgres_${ENVIRONMENT:-development}_data:/var/lib/postgresql/data
     networks:
       - memosphere-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U memosphere -d memosphere_${ENVIRONMENT:-development}"]
+      test:
+        [
+          'CMD-SHELL',
+          'pg_isready -U memosphere -d memosphere_${ENVIRONMENT:-development}',
+        ]
       interval: 10s
       timeout: 5s
       retries: 5
-  
 
   migration-service:
     build:
@@ -42,19 +45,19 @@ services:
     networks:
       - memosphere-network
     command: pnpm run migrate:latest
-    restart: "no"
+    restart: 'no'
 
   redis:
     image: redis:7-alpine
     container_name: memosphere-redis
     ports:
-      - "6379:6379"
+      - '6379:6379'
     volumes:
       - redis_data:/data
     networks:
       - memosphere-network
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ['CMD', 'redis-cli', 'ping']
       interval: 10s
       timeout: 5s
       retries: 5
@@ -76,7 +79,7 @@ services:
       JWT_SECRET: dev_jwt_secret_key_here
       JWT_EXPIRES_IN: 24h
     ports:
-      - "3001:3001"
+      - '3001:3001'
     volumes:
       # Mount source code for development
       - ../../packages/user-management-service/src:/app/packages/user-management-service/src
@@ -106,7 +109,7 @@ services:
       DATABASE_URL: postgresql://memosphere:memosphere_secure_dev_2025!@postgres:5432/memosphere_${ENVIRONMENT:-development}
       REDIS_URL: redis://redis:6379
     ports:
-      - "3002:3002"
+      - '3002:3002'
     volumes:
       # Mount source code for development
       - ../../packages/content-management-service/src:/app/packages/content-management-service/src
@@ -139,7 +142,7 @@ services:
       LEARNING_ENGINE_URL: http://learning-engine-service:8002
       QUESTION_GENERATION_URL: http://question-generation-service:8001
     ports:
-      - "3003:3003"
+      - '3003:3003'
     volumes:
       # Mount entire package for development (your original approach)
       - ../../packages/quiz-session-service:/app/packages/quiz-session-service
@@ -172,7 +175,7 @@ services:
       DATABASE_URL: postgresql://memosphere:memosphere_secure_dev_2025!@postgres:5432/memosphere_${ENVIRONMENT:-development}
       REDIS_URL: redis://redis:6379
     ports:
-      - "3004:3004"
+      - '3004:3004'
     volumes:
       # Mount source code for development
       - ../../packages/analytics-service/src:/app/packages/analytics-service/src
@@ -206,7 +209,7 @@ services:
       SMTP_USER: dev_email@gmail.com
       SMTP_PASS: dev_app_password
     ports:
-      - "3005:3005"
+      - '3005:3005'
     volumes:
       # Mount source code for development
       - ../../packages/notification-service/src:/app/packages/notification-service/src
@@ -242,7 +245,7 @@ services:
       MISTRAL_API_KEY: your_dev_mistral_api_key_here
       OPENAI_API_KEY: your_dev_openai_api_key_here
     ports:
-      - "8001:8001"
+      - '8001:8001'
     depends_on:
       postgres:
         condition: service_healthy
@@ -269,7 +272,7 @@ services:
       IRT_ABILITY_RANGE_MIN: -3.0
       IRT_ABILITY_RANGE_MAX: 3.0
     ports:
-      - "8002:8002"
+      - '8002:8002'
     depends_on:
       postgres:
         condition: service_healthy
@@ -289,11 +292,11 @@ services:
     image: nginx:alpine
     container_name: memosphere-nginx
     ports:
-      - "80:80"
+      - '80:80'
     volumes:
       - ../nginx/nginx.conf:/etc/nginx/nginx.conf:ro
     depends_on:
-      migration-service:           # ✅ Only needs migrations to complete
+      migration-service: # ✅ Only needs migrations to complete
         condition: service_completed_successfully
       redis:
         condition: service_healthy
@@ -315,4 +318,3 @@ volumes:
   postgres_development_data:
   postgres_test_data:
   redis_data:
- 

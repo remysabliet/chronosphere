@@ -8,8 +8,16 @@ export async function up(knex) {
     table.string('triggered_by');
 
     // Foreign key constraints
-    table.foreign('user_id').references('user_id').inTable('users').onDelete('CASCADE');
-    table.foreign('concept_id').references('id').inTable('learning_units').onDelete('CASCADE');
+    table
+      .foreign('user_id')
+      .references('user_id')
+      .inTable('users')
+      .onDelete('CASCADE');
+    table
+      .foreign('concept_id')
+      .references('id')
+      .inTable('learning_units')
+      .onDelete('CASCADE');
   });
 }
 

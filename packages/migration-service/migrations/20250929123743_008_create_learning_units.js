@@ -15,7 +15,10 @@ export async function up(knex) {
     table.string('version');
 
     // Foreign key constraint
-    table.foreign('complexity_level').references('complexity_level').inTable('bkt_parameter_defaults');
+    table
+      .foreign('complexity_level')
+      .references('complexity_level')
+      .inTable('bkt_parameter_defaults');
 
     // Indexes
     table.index(['thema', 'topic']);

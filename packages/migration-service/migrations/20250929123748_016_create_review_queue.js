@@ -12,9 +12,21 @@ export async function up(knex) {
     table.primary(['user_id', 'concept_id', 'bloom_level']);
 
     // Foreign key constraints
-    table.foreign('user_id').references('user_id').inTable('users').onDelete('CASCADE');
-    table.foreign('concept_id').references('id').inTable('learning_units').onDelete('CASCADE');
-    table.foreign('question_id').references('id').inTable('questions').onDelete('SET NULL');
+    table
+      .foreign('user_id')
+      .references('user_id')
+      .inTable('users')
+      .onDelete('CASCADE');
+    table
+      .foreign('concept_id')
+      .references('id')
+      .inTable('learning_units')
+      .onDelete('CASCADE');
+    table
+      .foreign('question_id')
+      .references('id')
+      .inTable('questions')
+      .onDelete('SET NULL');
 
     // Indexes
     table.index(['user_id', 'concept_id', 'bloom_level']);

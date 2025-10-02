@@ -15,7 +15,11 @@ export async function up(knex) {
     table.string('account_status').defaultTo('active');
 
     // Foreign key constraint
-    table.foreign('role_id').references('role_id').inTable('user_roles').onDelete('SET NULL');
+    table
+      .foreign('role_id')
+      .references('role_id')
+      .inTable('user_roles')
+      .onDelete('SET NULL');
 
     // Indexes
     table.index(['email']);

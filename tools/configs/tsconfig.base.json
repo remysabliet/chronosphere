@@ -1,11 +1,7 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "lib": [
-      "ES2022",
-      "DOM",
-      "DOM.Iterable"
-    ],
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "allowJs": true,
     "skipLibCheck": true,
     "strict": true,
@@ -19,12 +15,8 @@
     "incremental": true,
     "baseUrl": ".",
     "paths": {
-      "@memosphere/shared": [
-        "./packages/shared/src"
-      ],
-      "@memosphere/shared/*": [
-        "./packages/shared/src/*"
-      ]
+      "@memosphere/shared": ["./packages/shared/src"],
+      "@memosphere/shared/*": ["./packages/shared/src/*"]
     }
   }
 }

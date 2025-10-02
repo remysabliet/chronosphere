@@ -2,27 +2,23 @@ GPT
 When choosing between Google Cloud Natural Language API and AWS Comprehend for a project like Memosphere, it’s important to consider various factors such as feature offerings, scalability, ease of integration, cost, and the specific requirements of your application. Both services offer robust natural language processing capabilities, but they have different strengths and specialties. Here’s a comparison to help you decide which might be better suited for your needs:
 
 Feature Comparison
+
 1. Language Support
 
 Google Cloud Natural Language: Supports multiple languages, useful for global applications.
-AWS Comprehend: Also supports multiple languages and continuously adds new ones, comparable to Google in scope.
-2. Entity Recognition
+AWS Comprehend: Also supports multiple languages and continuously adds new ones, comparable to Google in scope. 2. Entity Recognition
 
 Google: Can identify and label entities within the text, and also offers entity sentiment analysis, which is useful for understanding how positive or negative the context is regarding each entity.
-AWS: Provides entity recognition that can be customized with specific entity types relevant to your business or domain.
-3. Sentiment Analysis
+AWS: Provides entity recognition that can be customized with specific entity types relevant to your business or domain. 3. Sentiment Analysis
 
 Google: Provides overall sentiment analysis and also sentiment analysis at the entity and sentence level.
-AWS: Offers sentiment analysis with a breakdown into positive, negative, neutral, and mixed feelings.
-4. Syntax Analysis
+AWS: Offers sentiment analysis with a breakdown into positive, negative, neutral, and mixed feelings. 4. Syntax Analysis
 
 Google: Provides detailed syntax analysis, including breaking up the text into sentences and tokens, and identifying parts of speech and morphological information.
-AWS: Comprehend’s syntax analysis identifies parts of speech and tokenizes input text but is generally less detailed than Google's.
-5. Key Phrases Extraction
+AWS: Comprehend’s syntax analysis identifies parts of speech and tokenizes input text but is generally less detailed than Google's. 5. Key Phrases Extraction
 
 AWS: Excels in identifying key phrases, which is crucial for generating relevant questions from text.
-Google: Does not explicitly list "key phrase extraction" but its entity analysis can be adapted to serve similar purposes.
-6. Integration with Other Services
+Google: Does not explicitly list "key phrase extraction" but its entity analysis can be adapted to serve similar purposes. 6. Integration with Other Services
 
 Google: Integrates seamlessly with other Google Cloud services, which might be beneficial if you’re already using Google’s infrastructure.
 AWS: Works well within the AWS ecosystem, allowing easy integration with other AWS services like AWS Lambda, S3, etc.

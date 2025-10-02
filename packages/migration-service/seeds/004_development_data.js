@@ -1,6 +1,6 @@
 /**
  * @param { import("knex").Knex } knex
- * @returns { Promise<void> } 
+ * @returns { Promise<void> }
  */
 export const seed = async function (knex) {
   // Deletes ALL existing entries
@@ -23,19 +23,29 @@ export const seed = async function (knex) {
       topic: 'Supervised Learning',
       session_type: 'learning',
       start_time: knex.fn.now(),
-      end_time: knex.raw('NOW() + INTERVAL \'30 minutes\''),
+      end_time: knex.raw("NOW() + INTERVAL '30 minutes'"),
       total_questions: 5,
       correct_answers: 4,
       total_time_seconds: 1800,
       session_status: 'completed',
       difficulty_progression: JSON.stringify([0.5, 0.7, 0.8, 1.0, 1.2]),
-      bloom_level_distribution: JSON.stringify({ 'Remembering': 2, 'Understanding': 2, 'Applying': 1 }),
-      session_goals: JSON.stringify(['Master linear regression basics', 'Practice calculation problems']),
+      bloom_level_distribution: JSON.stringify({
+        Remembering: 2,
+        Understanding: 2,
+        Applying: 1,
+      }),
+      session_goals: JSON.stringify([
+        'Master linear regression basics',
+        'Practice calculation problems',
+      ]),
       completion_rate: 0.8,
       average_response_time: 45.5,
       confidence_trend: JSON.stringify([0.6, 0.7, 0.8, 0.9, 0.85]),
-      mastery_gains: JSON.stringify({ 'Linear Regression': 0.15, 'Decision Trees': 0.1 })
-    }
+      mastery_gains: JSON.stringify({
+        'Linear Regression': 0.15,
+        'Decision Trees': 0.1,
+      }),
+    },
   ]);
 
   // Insert sample user responses
@@ -54,7 +64,7 @@ export const seed = async function (knex) {
       decision_type: 'Advance',
       timestamp: knex.fn.now(),
       attempt_quality: 'Good',
-      question_sequence_order: 1
+      question_sequence_order: 1,
     },
     {
       id: 'aa0e8400-e29b-41d4-a716-446655440002',
@@ -70,8 +80,8 @@ export const seed = async function (knex) {
       decision_type: 'Advance',
       timestamp: knex.fn.now(),
       attempt_quality: 'Good',
-      question_sequence_order: 2
-    }
+      question_sequence_order: 2,
+    },
   ]);
 
   // Insert sample mastery log
@@ -88,7 +98,8 @@ export const seed = async function (knex) {
       bloom_levels_assessed: ['Remembering', 'Understanding'],
       slip_count_recent: 0,
       decision_type: 'Advance',
-      feedback_text: 'Excellent understanding of linear regression fundamentals',
+      feedback_text:
+        'Excellent understanding of linear regression fundamentals',
       last_reinforced: knex.fn.now(),
       decay_threshold_days: 14,
       decay_status: 'Active',
@@ -97,8 +108,8 @@ export const seed = async function (knex) {
       last_review_outcome: 'Passed',
       slip_rate: 0.0,
       version: '1.0',
-      author: 'AI-generated'
-    }
+      author: 'AI-generated',
+    },
   ]);
 
   // Insert sample concept progress tracker
@@ -112,7 +123,7 @@ export const seed = async function (knex) {
       attempt_count: 3,
       correct_count: 3,
       slip_count: 0,
-      mastery_status: 'Mastered'
-    }
+      mastery_status: 'Mastered',
+    },
   ]);
 };

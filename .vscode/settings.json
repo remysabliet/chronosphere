@@ -5,10 +5,7 @@
     "source.fixAll.eslint": "always",
     "source.organizeImports": "always"
   },
-  "eslint.workingDirectories": [
-    "packages/*",
-    "apps/*"
-  ],
+  "eslint.workingDirectories": ["packages/*", "apps/*"],
   "files.associations": {
     "*.env*": "dotenv"
   },

@@ -20,7 +20,11 @@ export async function up(knex) {
     table.timestamp('created_at').notNullable();
 
     // Foreign key constraint
-    table.foreign('concept_id').references('id').inTable('learning_units').onDelete('CASCADE');
+    table
+      .foreign('concept_id')
+      .references('id')
+      .inTable('learning_units')
+      .onDelete('CASCADE');
 
     // Indexes
     table.index(['concept_id', 'bloom_level']);

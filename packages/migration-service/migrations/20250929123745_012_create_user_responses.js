@@ -16,10 +16,26 @@ export async function up(knex) {
     table.integer('question_sequence_order');
 
     // Foreign key constraints
-    table.foreign('session_id').references('session_id').inTable('quiz_sessions').onDelete('SET NULL');
-    table.foreign('user_id').references('user_id').inTable('users').onDelete('CASCADE');
-    table.foreign('question_id').references('id').inTable('questions').onDelete('CASCADE');
-    table.foreign('concept_id').references('id').inTable('learning_units').onDelete('CASCADE');
+    table
+      .foreign('session_id')
+      .references('session_id')
+      .inTable('quiz_sessions')
+      .onDelete('SET NULL');
+    table
+      .foreign('user_id')
+      .references('user_id')
+      .inTable('users')
+      .onDelete('CASCADE');
+    table
+      .foreign('question_id')
+      .references('id')
+      .inTable('questions')
+      .onDelete('CASCADE');
+    table
+      .foreign('concept_id')
+      .references('id')
+      .inTable('learning_units')
+      .onDelete('CASCADE');
 
     // Indexes
     table.index(['user_id', 'concept_id', 'bloom_level']);
@@ -31,7 +47,12 @@ export async function up(knex) {
     table.index(['session_id']);
 
     // Check constraints
-    table.check('decision_type IN (?, ?, ?, ?)', ['Review', 'Reinforce', 'Advance', 'Remediate']);
+    table.check('decision_type IN (?, ?, ?, ?)', [
+      'Review',
+      'Reinforce',
+      'Advance',
+      'Remediate',
+    ]);
     table.check('confidence_level IN (?, ?, ?)', ['Low', 'Medium', 'High']);
   });
 }

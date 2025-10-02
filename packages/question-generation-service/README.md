@@ -3,17 +3,20 @@
 AI-powered question generation using Mistral Large API.
 
 ## Tech Stack
+
 - **Python 3.11+ + FastAPI**
 - **Mistral Large API** for AI generation
 - **PostgreSQL** for question storage
 
 ## Key Features
+
 - AI question generation from text
 - Question validation and quality control
 - IRT metadata assignment
 - Multiple question types (MCQ, True/False, Fill-in)
 
 ## API Endpoints
+
 ```
 POST /questions/generate   # Generate questions from text
 GET  /questions/:id       # Get specific question
@@ -22,6 +25,7 @@ POST /irt/calibrate      # Calibrate IRT parameters
 ```
 
 ## Development
+
 ```bash
 python -m venv venv
 source venv/bin/activate

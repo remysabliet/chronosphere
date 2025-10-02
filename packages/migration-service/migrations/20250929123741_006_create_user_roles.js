@@ -12,7 +12,13 @@ export async function up(knex) {
     table.index(['is_active']);
 
     // Check constraint
-    table.check('role_name IN (?, ?, ?, ?, ?)', ['learner', 'admin', 'moderator', 'content_creator', 'analyst']);
+    table.check('role_name IN (?, ?, ?, ?, ?)', [
+      'learner',
+      'admin',
+      'moderator',
+      'content_creator',
+      'analyst',
+    ]);
   });
 
   // Note: Seed data should be in separate seed files, not migrations

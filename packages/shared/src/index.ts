@@ -6,5 +6,4 @@
 export const SHARED_VERSION = '1.0.0';
 
 // Add shared types, utilities, and constants here
-export { };
-
+export {};

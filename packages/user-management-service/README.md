@@ -3,16 +3,19 @@
 Handles authentication, user profiles, roles, and permissions for Memosphere.
 
 ## Tech Stack
+
 - **Node.js + Express** (or NestJS)
 - **PostgreSQL** + **JWT** + **Amazon Cognito**
 
 ## Key Features
+
 - OAuth2 social login (Google, Apple, Facebook)
 - Role-based access control (learner, admin, moderator, content_creator, analyst)
 - User profile management
 - Permission validation
 
 ## API Endpoints
+
 ```
 POST /auth/login          # User login
 POST /auth/register       # User registration
@@ -22,6 +25,7 @@ GET  /users/:id/permissions # Get user permissions
 ```
 
 ## Development
+
 ```bash
 pnpm install
 cp .env.example .env

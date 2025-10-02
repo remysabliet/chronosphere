@@ -44,7 +44,7 @@ jobs:
       - name: Install dependencies
         run: pnpm install
       - name: Run Node.js unit tests
-        run: pnpm run test:unit:nodejs
+        run: pnpm run test:unit
 
   test-unit-python:
     runs-on: ubuntu-latest
@@ -68,7 +68,7 @@ jobs:
           cd ../question-generation-service
           poetry install
       - name: Run Python unit tests
-        run: pnpm run test:unit:python
+        run: pnpm run test:python:unit
 
   test-integration-nodejs:
     runs-on: ubuntu-latest
@@ -100,7 +100,7 @@ jobs:
       - name: Install dependencies
         run: pnpm install
       - name: Run Node.js integration tests
-        run: pnpm run test:integration:nodejs
+        run: pnpm run test:integration
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/memosphere_test
 
@@ -139,7 +139,7 @@ jobs:
           cd ../question-generation-service
           poetry install
       - name: Run Python integration tests
-        run: pnpm run test:integration:python
+        run: pnpm run test:python:integration
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/memosphere_test
 

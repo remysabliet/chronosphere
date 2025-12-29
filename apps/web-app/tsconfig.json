@@ -1,0 +1,79 @@
+{
+  "compilerOptions": {
+    // Base config
+    "target": "ES2022",
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "esnext"
+    ],
+    "jsx": "react-jsx",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    // Strict mode
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
+    // Module resolution
+    "allowJs": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "forceConsistentCasingInFileNames": true,
+    // Incremental compilation
+    "incremental": true,
+    "isolatedModules": true,
+    // Emit
+    "noEmit": true,
+    // Next.js specific
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    // Path mapping - baseUrl points to src for cleaner paths
+    "baseUrl": "src",
+    "paths": {
+      "@/*": [
+        "./*"
+      ],
+      "@/components/*": [
+        "shared/components/*"
+      ],
+      "@/ui/*": [
+        "shared/components/ui/*"
+      ],
+      "@/features/*": [
+        "features/*"
+      ],
+      "@/lib/*": [
+        "shared/lib/*"
+      ],
+      "@/hooks/*": [
+        "shared/hooks/*"
+      ],
+      "@/stores/*": [
+        "shared/stores/*"
+      ],
+      "@/types/*": [
+        "shared/types/*"
+      ],
+      "@/styles/*": [
+        "styles/*"
+      ]
+    }
+  },
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    ".next/types/**/*.ts",
+    ".next/dev/types/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
+}

@@ -4,6 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## implementation guideline
 Aways implement using DRY and SOLID principle
+Aways Apply best practices
 
 ## Communication Guidelines
 

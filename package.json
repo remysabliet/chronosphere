@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "AI-powered adaptive learning platform",
   "private": true,
+  "type": "module",
   "packageManager": "pnpm@10.17.1",
   "main": "index.js",
   "scripts": {
@@ -28,6 +29,7 @@
     "prepare": "husky"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.2",
     "@playwright/test": "^1.40.0",
     "@types/supertest": "^2.0.0",
     "@typescript-eslint/eslint-plugin": "^8.44.1",
@@ -41,6 +43,7 @@
     "prettier": "^3.6.2",
     "supertest": "^6.0.0",
     "typescript": "^5.9.2",
+    "typescript-eslint": "^8.50.1",
     "vitest": "^1.0.0"
   },
   "workspaces": [

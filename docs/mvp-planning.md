@@ -64,7 +64,7 @@
 
 - **Cloud Provider**: AWS
   - **Compute**: Kubernetes on EC2 (Manual scaling, cost-effective)
-  - **Database**: Amazon RDS PostgreSQL (Free Tier: 750 hrs/month)
+  - **Database**: Amazon RDS PostgreSQL (Free Tier: 750 hrs/year)
   - **Authentication**: Amazon Cognito (Free Tier: 50,000 MAUs)
   - **Storage**: Amazon S3 (Free Tier: 5GB)
   - **Caching**: Amazon ElastiCache Redis (Optional for MVP)

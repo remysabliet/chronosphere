@@ -2,6 +2,9 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## implementation guideline
+Aways implement using DRY and SOLID principle
+
 ## Communication Guidelines
 
 Always explain your plan before asking for implementation

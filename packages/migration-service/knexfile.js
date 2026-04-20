@@ -5,7 +5,7 @@ export default {
     connection: process.env.DATABASE_URL || {
       host: process.env.DB_HOST || 'localhost',
       port: parseInt(process.env.DB_PORT || '5432'),
-      database: process.env.DB_NAME || 'memosphere_dev',
+      database: process.env.DB_NAME || 'memosphere_development',
       user: process.env.DB_USER || 'memosphere',
       password: process.env.DB_PASSWORD || 'memosphere_secure_dev_2025!',
     },

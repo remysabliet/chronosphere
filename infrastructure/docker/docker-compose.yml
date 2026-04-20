@@ -256,6 +256,9 @@ services:
     networks:
       - memosphere-network
     restart: unless-stopped
+    volumes:
+      - ../../packages/question-generation-service/src:/app/packages/question-generation-service/src
+    command: uvicorn question_generation_service.main:app --host 0.0.0.0 --port 8001 --reload
 
   learning-engine-service:
     build:
@@ -283,6 +286,9 @@ services:
     networks:
       - memosphere-network
     restart: unless-stopped
+    volumes:
+      - ../../packages/learning-engine-service/src:/app/packages/learning-engine-service/src
+    command: uvicorn learning-engine-service.main:app --host 0.0.0.0 --port 8001 --reload
 
   # =============================================================================
   # API Gateway

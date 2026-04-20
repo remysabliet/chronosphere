@@ -3,6 +3,7 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## implementation guideline
+
 Aways implement using DRY and SOLID principle
 Aways Apply best practices
 
@@ -21,6 +22,7 @@ Memosphere is an AI-powered adaptive learning platform built with a microservice
 ## Development Commands
 
 ### Setup & Running
+
 ```bash
 # Install dependencies
 pnpm install
@@ -37,6 +39,7 @@ pnpm run dev
 ```
 
 ### Testing
+
 ```bash
 # Run all tests (unit + integration)
 pnpm run test
@@ -62,6 +65,7 @@ cd packages/question-generation-service && poetry run pytest tests/integration/
 ```
 
 ### Linting & Formatting
+
 ```bash
 # Lint all code
 pnpm run lint
@@ -80,6 +84,7 @@ pnpm run type-check
 ```
 
 ### Database Migrations
+
 ```bash
 # Run migrations (from migration-service)
 cd packages/migration-service
@@ -99,6 +104,7 @@ pnpm run migrate:status
 ```
 
 ### Building
+
 ```bash
 # Build all packages
 pnpm run build
@@ -113,6 +119,7 @@ pnpm run build
 ### Microservices Structure
 
 **TypeScript/Node.js Services:**
+
 - `quiz-session-service` - Real-time quiz orchestration (Port 3003)
 - `user-management-service` - Authentication & user profiles (Port 3001)
 - `content-management-service` - Learning materials & curriculum
@@ -121,18 +128,22 @@ pnpm run build
 - `migration-service` - Database migrations with Knex.js
 
 **Python Services (FastAPI):**
+
 - `learning-engine-service` - BKT/IRT algorithms & adaptive decision engine
 - `question-generation-service` - AI-powered question creation
 
 **Shared Package:**
+
 - `@memosphere/shared` - Shared types, utilities, and configurations
 
 **Frontend:**
+
 - `apps/web-app` - React frontend application
 
 ### Infrastructure
 
 **Docker Compose** (`infrastructure/docker/docker-compose.yml`):
+
 - PostgreSQL 17 (Port 5432)
 - Redis 7 (Port 6379)
 - All microservices with hot-reload in development
@@ -153,11 +164,13 @@ packages/<service>/tests/
 ## Development Patterns
 
 ### TypeScript Configuration
+
 - Base config: `tools/configs/tsconfig.base.json`
 - Each package extends base config
 - ES Modules (`"type": "module"`)
 
 ### Python Services
+
 - **Dependency Management**: Poetry
 - **Python Version**: 3.13.7
 - **Key Libraries**: FastAPI, NumPy, SciPy, scikit-learn, BKT library
@@ -166,11 +179,14 @@ packages/<service>/tests/
 - **Type Checking**: mypy (strict mode)
 
 ### Git Hooks (Husky)
+
 - **Pre-commit**: Runs `pnpm run lint && pnpm run format`
 - **Pre-push**: Runs `pnpm run test:unit`
 
 ### Environment Variables
+
 Services expect environment variables for:
+
 - `NODE_ENV` - development/test/production
 - `DATABASE_URL` - PostgreSQL connection string
 - `REDIS_URL` - Redis connection string
@@ -179,23 +195,26 @@ Services expect environment variables for:
 ## Key Implementation Details
 
 ### Database Migrations
+
 - Managed by `migration-service` using Knex.js
 - Migrations run automatically in Docker Compose via `migration-service` container
 - Test environment creates/destroys isolated test DB
 - Migration files: `packages/migration-service/migrations/`
 
 ### Testing Strategy
+
 - **Unit tests**: No external dependencies
 - **Integration tests**: Automatically spin up PostgreSQL and Redis in Docker (test environment)
 - Test DB lifecycle managed by npm scripts (`test:db:create`, `test:db:destroy`)
 - Python tests use pytest with async support
 
 ### Service Communication
+
 Services are designed for inter-service communication over HTTP/REST (future state), currently most services are stubs.
 
 ### Code Quality Tools
+
 - **ESLint**: Flat config format with TypeScript, import ordering
 - **Prettier**: 80 char line length, 2 spaces, trailing commas
 - **TypeScript**: Strict type checking across all services
 - **Python**: Black + isort + mypy for formatting and type safety
-

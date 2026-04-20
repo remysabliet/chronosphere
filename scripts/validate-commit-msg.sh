@@ -1,5 +1,3 @@
-#!/bin/bash
-
 # Validate commit message format
 # Format: <emoji> <type>: <description>
 
@@ -47,7 +45,7 @@ if [ "$valid" = false ]; then
   echo ""
   echo "Format: <emoji> <type>: <description>"
   echo ""
-  echo "Valid patterns:"
+  echo "Valid patterns (on Mac: Ctrl+Cmd+Space to open emoji picker):"
   echo "  ✨ feat: Add new feature"
   echo "  🐛 fix: Fix a bug"
   echo "  📚 docs: Update documentation"

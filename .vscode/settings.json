@@ -3,8 +3,9 @@
   "editor.formatOnSave": true,
   "editor.codeActionsOnSave": {
     "source.fixAll.eslint": "always",
-    "source.organizeImports": "always"
+    "source.organizeImports": "explicit"
   },
+  "eslint.probe": ["javascript", "javascriptreact", "typescript", "typescriptreact"],
   "eslint.workingDirectories": ["packages/*", "apps/*"],
   "files.associations": {
     "*.env*": "dotenv"
@@ -23,7 +24,11 @@
     "editor.defaultFormatter": "vscode.typescript-language-features"
   },
   "[python]": {
-    "editor.defaultFormatter": "vscode.typescript-language-features"
+    "editor.defaultFormatter": "ms-python.black-formatter",
+    "editor.codeActionsOnSave": {
+      "source.fixAll.eslint": "never",
+      "source.organizeImports": "never"
+    }
   },
   "[json]": {
     "editor.defaultFormatter": "vscode.json-language-features"

@@ -1,0 +1,18 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../training/python/Ultimate-Guide-to-FastAPI-and-Backend-Development"
+		},
+		{
+			"path": "../toptal"
+		}
+	],
+	"settings": {
+		"files.associations": {
+			"*.env*": "dotenv"
+		},
+	}
+}

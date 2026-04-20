@@ -3,5 +3,6 @@
   "editor.codeActionsOnSave": {
     "source.fixAll.eslint": "never",
     "source.organizeImports": "never"
-  }
+  },
+  "explorer.autoReveal": true
 }

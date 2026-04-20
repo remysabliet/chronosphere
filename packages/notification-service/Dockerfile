@@ -9,7 +9,7 @@
   FROM node:20-alpine AS base
 
   # Install pnpm globally with specific version for reproducibility
-  RUN npm install -g pnpm@8.12.0
+  RUN npm install -g pnpm@10.17.1
   
   # Set working directory
   WORKDIR /app
@@ -26,7 +26,7 @@
   COPY packages/notification-service ./packages/notification-service
   
   # Install ALL dependencies (dev + prod) for building
-  RUN pnpm install --frozen-lockfile
+  RUN pnpm install --frozen-lockfile --ignore-scripts
   
   # -----------------------------------------------------------------------------
   # Stage 2: Build - Compilation and building
@@ -40,7 +40,7 @@
   RUN pnpm --filter @memosphere/notification-service build
   
   # Create production node_modules (remove dev dependencies)
-  RUN pnpm install --prod --frozen-lockfile
+  RUN CI=true pnpm install --prod --frozen-lockfile --ignore-scripts
   
   # -----------------------------------------------------------------------------
   # Stage 3: Production - Copy everything from build
@@ -48,7 +48,7 @@
   FROM node:20-alpine AS production
   
   # Install pnpm
-  RUN corepack enable && corepack prepare pnpm@8.12.0 --activate
+  RUN corepack enable && corepack prepare pnpm@10.17.1 --activate
   
   # Create non-root user for security
   RUN addgroup -g 1001 -S nodejs && \

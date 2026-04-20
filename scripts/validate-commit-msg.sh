@@ -1,3 +1,5 @@
+#!/usr/bin/env bash
+
 # Validate commit message format
 # Format: <emoji> <type>: <description>
 

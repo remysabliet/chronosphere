@@ -7,6 +7,7 @@ Based on your microservice architecture, here's the recommended route structure:
 ## 🌐 Public Routes (`/`)
 
 These routes are accessible without authentication:
+
 ```
 /                          → Landing page with value proposition
 /about                     → About the platform and methodology
@@ -26,6 +27,7 @@ These routes are accessible without authentication:
 ## 🔐 Private Routes (Authenticated Users)
 
 ### Learner Routes (`/app`)
+
 ```
 /app/dashboard             → Personal dashboard with progress overview
 /app/profile               → Profile settings and preferences
@@ -34,6 +36,7 @@ These routes are accessible without authentication:
 ```
 
 #### Quiz & Learning Flow
+
 ```
 /app/quiz/start            → Quiz initialization (select thema/concepts)
 /app/quiz/:sessionId       → Active quiz session
@@ -41,6 +44,7 @@ These routes are accessible without authentication:
 ```
 
 #### Progress & Analytics
+
 ```
 /app/progress              → Detailed progress tracking
 /app/mastery               → Mastery status across concepts
@@ -49,6 +53,7 @@ These routes are accessible without authentication:
 ```
 
 #### Settings
+
 ```
 /app/settings              → Account settings
 /app/notifications         → Notification preferences
@@ -57,6 +62,7 @@ These routes are accessible without authentication:
 ---
 
 ### Admin Routes (`/admin`)
+
 ```
 /admin/dashboard           → Admin overview (system health, metrics)
 /admin/users               → User management
@@ -70,6 +76,7 @@ These routes are accessible without authentication:
 ```
 
 #### Question Quality Monitoring
+
 ```
 /admin/questions           → Question library overview
 /admin/questions/flagged   → Auto-flagged questions (low performance, validation failures)
@@ -80,6 +87,7 @@ These routes are accessible without authentication:
 ```
 
 #### System Logs & Debugging
+
 ```
 /admin/logs                → Error logs, system events
 /admin/logs/ai-generation  → AI question generation logs (failures, retries)
@@ -88,6 +96,7 @@ These routes are accessible without authentication:
 ```
 
 #### AI Configuration
+
 ```
 /admin/ai-config           → AI model settings (prompts, temperature, tokens)
 ```
@@ -97,6 +106,7 @@ These routes are accessible without authentication:
 ## 🏗️ Route Organization Strategy
 
 ### Route Grouping by Feature
+
 ```
 /app/*          → Learner experience
 /admin/*        → Platform administration
@@ -104,6 +114,7 @@ These routes are accessible without authentication:
 ```
 
 ### Protected Route Middleware Chain
+
 ```
 Public          → No auth required
 /app/*          → Requires: Authentication
@@ -115,6 +126,7 @@ Public          → No auth required
 ## 🎯 Special Considerations
 
 ### Deep Linking for Quiz Sessions
+
 ```
 /app/quiz/:sessionId/question/:questionIndex
 ```
@@ -122,11 +134,13 @@ Public          → No auth required
 This allows learners to bookmark or share their position (useful for long sessions).
 
 ### Shareable Progress
+
 ```
 /share/progress/:userId/:token  → Public shareable progress card
 ```
 
 ### API Routes (if building mobile app or exposing API)
+
 ```
 /api/v1/auth/*
 /api/v1/quiz/*
@@ -135,6 +149,7 @@ This allows learners to bookmark or share their position (useful for long sessio
 ```
 
 ### 404 & Error Pages
+
 ```
 /404                      → Not found
 /500                      → Server error
@@ -146,25 +161,27 @@ This allows learners to bookmark or share their position (useful for long sessio
 ## 🔄 Navigation Flow Examples
 
 ### New User Journey
+
 ```
-/ (landing) 
-  → /register 
-  → /verify-email 
-  → /login 
-  → /app/dashboard 
-  → /app/subjects 
-  → /app/quiz/start 
-  → /app/quiz/:sessionId 
-  → /app/quiz/:sessionId/review 
+/ (landing)
+  → /register
+  → /verify-email
+  → /login
+  → /app/dashboard
+  → /app/subjects
+  → /app/quiz/start
+  → /app/quiz/:sessionId
+  → /app/quiz/:sessionId/review
   → /app/dashboard
 ```
 
 ### Returning Learner
+
 ```
-/login 
-  → /app/dashboard 
-  → /app/review-queue 
-  → /app/quiz/:sessionId 
+/login
+  → /app/dashboard
+  → /app/review-queue
+  → /app/quiz/:sessionId
   → /app/mastery
 ```
 

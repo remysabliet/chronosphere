@@ -5,7 +5,12 @@
     "source.fixAll.eslint": "always",
     "source.organizeImports": "explicit"
   },
-  "eslint.probe": ["javascript", "javascriptreact", "typescript", "typescriptreact"],
+  "eslint.probe": [
+    "javascript",
+    "javascriptreact",
+    "typescript",
+    "typescriptreact"
+  ],
   "eslint.workingDirectories": ["packages/*", "apps/*"],
   "files.associations": {
     "*.env*": "dotenv"

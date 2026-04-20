@@ -1,44 +1,47 @@
-import js from '@eslint/js'
-import tseslint from 'typescript-eslint'
+import js from '@eslint/js';
+import globals from 'globals';
+import tseslint from 'typescript-eslint';
 
-let nextPlugin
+let nextPlugin;
 try {
-  nextPlugin = (await import('@next/eslint-plugin-next')).default
+  nextPlugin = (await import('@next/eslint-plugin-next')).default;
 } catch {
-  nextPlugin = null
+  nextPlugin = null;
 }
 
+const FILES = ['**/*.{ts,tsx,js,jsx}'];
+
+const IGNORES = [
+  '**/node_modules/**',
+  '**/.next/**',
+  '**/dist/**',
+  '**/build/**',
+  '**/coverage/**',
+  '**/.venv/**',
+  '**/*.config.js',
+  '**/*.config.ts',
+  '**/*.d.ts',
+  '**/.eslintrc*',
+  '**/*.json',
+  '**/generated/**',
+  '**/public/**',
+  'packages/migration-service/knexfile.js',
+];
+
 export default [
+  { ignores: IGNORES },
+  { ...js.configs.recommended, files: FILES },
+  ...tseslint.configs.recommended.map(config => ({ ...config, files: FILES })),
   {
-    ignores: [
-      'node_modules',
-      '.next',
-      'dist',
-      'build',
-      '**/*.config.js',
-      '**/coverage',
-      'packages/migration-service/knexfile.js',
-    ],
-  },
-  js.configs.recommended,
-  ...tseslint.configs.recommended,
-  {
-    files: ['**/*.{ts,tsx,js,jsx}'],
+    files: FILES,
     languageOptions: {
       ecmaVersion: 2020,
       sourceType: 'module',
       globals: {
-        document: 'readonly',
-        window: 'readonly',
-        console: 'readonly',
-        setTimeout: 'readonly',
-        clearTimeout: 'readonly',
-        setInterval: 'readonly',
-        clearInterval: 'readonly',
-        process: 'readonly',
-        Buffer: 'readonly',
-        __dirname: 'readonly',
-        __filename: 'readonly',
+        ...globals.browser,
+        ...globals.node,
+        ...globals.es2020,
+        React: 'readonly',
       },
     },
     plugins: {
@@ -57,4 +60,8 @@ export default [
       'no-undef': 'warn',
     },
   },
-]
+  {
+    files: ['**/*.{ts,tsx}'],
+    rules: { 'no-undef': 'off' },
+  },
+];

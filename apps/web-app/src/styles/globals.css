@@ -58,7 +58,9 @@
 
   body {
     @apply bg-background text-foreground;
-    font-feature-settings: "rlig" 1, "calt" 1;
+    font-feature-settings:
+      'rlig' 1,
+      'calt' 1;
   }
 
   /* Smooth scrolling */
@@ -173,7 +175,8 @@
 
   /* Blob animation for hero section */
   @keyframes blob {
-    0%, 100% {
+    0%,
+    100% {
       transform: translate(0px, 0px) scale(1);
     }
     33% {

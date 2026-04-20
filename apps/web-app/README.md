@@ -7,26 +7,31 @@
 ## 🛠️ Tech Stack
 
 ### Core
+
 - **Next.js 16** - React 19 framework with App Router
 - **TypeScript** - Type safety
 - **Tailwind CSS** - Utility-first styling
 
 ### UI & Components
+
 - **shadcn/ui + Radix UI** - Accessible component primitives
 - **Lucide React** - Icon system
 - **Framer Motion** - Animations (card flips, transitions, gestures)
 - **@dnd-kit** - Drag-and-drop (matching/ordering questions)
 
 ### State & Data
+
 - **TanStack Query v5** - Server state, API caching (replaces axios + SWR)
 - **Zustand** - Client state (quiz session, user prefs)
 - **React Hook Form + Zod** - Forms and validation
 
 ### Multimedia
+
 - **Howler.js** - Audio engine (TTS, listening comprehension, sound effects)
 - **next/image** - Optimized images
 
 ### Other
+
 - **Recharts** - Analytics charts
 - **Auth.js (NextAuth.js v5)** - Authentication (AWS Cognito)
 - **Socket.io Client** - Real-time quiz sessions
@@ -36,21 +41,21 @@
 
 ## 🚫 Libraries We're NOT Using (Overlaps Eliminated)
 
-| ❌ Avoided | ✅ Using Instead | Reason |
-|-----------|------------------|---------|
-| **Axios** | TanStack Query + fetch | Query handles caching/retries; fetch is built-in |
-| **SWR** | TanStack Query v5 | More features (mutations, devtools) |
-| **Redux** | Zustand | 90% less code, 1KB vs 11KB |
-| **React Spring/GSAP** | Framer Motion | One library for all animations |
-| **react-beautiful-dnd** | @dnd-kit | Deprecated by Atlassian |
-| **Chart.js** | Recharts | React-native, composable |
-| **Material-UI/Chakra** | shadcn/ui | No 300KB bundle, full control |
-| **react-icons** | lucide-react | Tree-shakable, 17MB → <1MB |
-| **Formik** | React Hook Form | 3x faster, better TypeScript |
-| **moment.js** | date-fns | Deprecated, 67KB → 16KB |
-| **use-sound** | Howler.js | More features, direct Web Audio API |
-| **react-card-flip** | Framer Motion | Framer handles all animations |
-| **Auth0/Clerk** | Auth.js | Free, open-source |
+| ❌ Avoided              | ✅ Using Instead       | Reason                                           |
+| ----------------------- | ---------------------- | ------------------------------------------------ |
+| **Axios**               | TanStack Query + fetch | Query handles caching/retries; fetch is built-in |
+| **SWR**                 | TanStack Query v5      | More features (mutations, devtools)              |
+| **Redux**               | Zustand                | 90% less code, 1KB vs 11KB                       |
+| **React Spring/GSAP**   | Framer Motion          | One library for all animations                   |
+| **react-beautiful-dnd** | @dnd-kit               | Deprecated by Atlassian                          |
+| **Chart.js**            | Recharts               | React-native, composable                         |
+| **Material-UI/Chakra**  | shadcn/ui              | No 300KB bundle, full control                    |
+| **react-icons**         | lucide-react           | Tree-shakable, 17MB → <1MB                       |
+| **Formik**              | React Hook Form        | 3x faster, better TypeScript                     |
+| **moment.js**           | date-fns               | Deprecated, 67KB → 16KB                          |
+| **use-sound**           | Howler.js              | More features, direct Web Audio API              |
+| **react-card-flip**     | Framer Motion          | Framer handles all animations                    |
+| **Auth0/Clerk**         | Auth.js                | Free, open-source                                |
 
 ---
 
@@ -297,14 +302,14 @@ apps/web-app/
 
 ## 🎯 Architecture Patterns by Feature
 
-| Feature | Architecture | Rationale |
-|---------|-------------|-----------|
-| **Quiz** | Clean Architecture | Complex business logic (scoring, adaptive difficulty) |
-| **Memocard** | Clean Architecture | Spaced repetition algorithm, state machine |
-| **Analytics** | Clean Architecture | Data transformation, multiple visualization layers |
-| **Auth** | Simplified | Mostly handled by Auth.js, minimal business logic |
-| **User Profile** | Simplified | Basic CRUD operations |
-| **Admin/Moderator** | Simplified | Standard forms and tables |
+| Feature             | Architecture       | Rationale                                             |
+| ------------------- | ------------------ | ----------------------------------------------------- |
+| **Quiz**            | Clean Architecture | Complex business logic (scoring, adaptive difficulty) |
+| **Memocard**        | Clean Architecture | Spaced repetition algorithm, state machine            |
+| **Analytics**       | Clean Architecture | Data transformation, multiple visualization layers    |
+| **Auth**            | Simplified         | Mostly handled by Auth.js, minimal business logic     |
+| **User Profile**    | Simplified         | Basic CRUD operations                                 |
+| **Admin/Moderator** | Simplified         | Standard forms and tables                             |
 
 ---
 
@@ -316,12 +321,12 @@ Each feature is **self-contained** with its own domain logic, use cases, infrast
 
 ```tsx
 // ✅ All quiz-related code lives together
-import { QuestionCard, useQuizSession, submitAnswer } from '@/features/quiz'
+import { QuestionCard, useQuizSession, submitAnswer } from '@/features/quiz';
 
 // ❌ Instead of hunting across folders
-import { QuestionCard } from '@/components/quiz/QuestionCard'
-import { useQuizSession } from '@/hooks/useQuizSession'
-import { submitAnswer } from '@/lib/api/quiz'
+import { QuestionCard } from '@/components/quiz/QuestionCard';
+import { useQuizSession } from '@/hooks/useQuizSession';
+import { submitAnswer } from '@/lib/api/quiz';
 ```
 
 ### 2. Clean Architecture for Complex Features
@@ -350,28 +355,28 @@ export async function submitAnswer(
   answer: Answer,
   repository: QuizRepository // Injected dependency
 ): Promise<Result> {
-  const question = await repository.getQuestion(sessionId)
-  const score = new ScoringEngine().calculateScore(answer, question)
-  await repository.saveScore(sessionId, score)
-  return { score, feedback: generateFeedback(score) }
+  const question = await repository.getQuestion(sessionId);
+  const score = new ScoringEngine().calculateScore(answer, question);
+  await repository.saveScore(sessionId, score);
+  return { score, feedback: generateFeedback(score) };
 }
 
 // infrastructure/repositories/quiz-repository.ts (API adapter)
 export class QuizRepository {
   async getQuestion(sessionId: string): Promise<Question> {
-    const res = await fetch(`${QUIZ_SERVICE_URL}/quiz/${sessionId}`)
-    return res.json()
+    const res = await fetch(`${QUIZ_SERVICE_URL}/quiz/${sessionId}`);
+    return res.json();
   }
 }
 
 // presentation/components/quiz-form.tsx (UI)
-'use client'
+('use client');
 export function QuizForm({ sessionId }: Props) {
   const mutation = useMutation({
-    mutationFn: (answer) => submitAnswer(sessionId, answer, new QuizRepository())
-  })
-  
-  return <form onSubmit={mutation.mutate}>...</form>
+    mutationFn: answer => submitAnswer(sessionId, answer, new QuizRepository()),
+  });
+
+  return <form onSubmit={mutation.mutate}>...</form>;
 }
 ```
 
@@ -381,26 +386,28 @@ The frontend calls backend microservices directly via TanStack Query and Server 
 
 ```tsx
 // ✅ Frontend → Microservice (via TanStack Query)
-import { useQuery } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query';
 
 function useQuizSession(sessionId: string) {
   return useQuery({
     queryKey: ['quiz', sessionId],
     queryFn: async () => {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_QUIZ_SERVICE_URL}/quiz/${sessionId}`)
-      return res.json()
-    }
-  })
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_QUIZ_SERVICE_URL}/quiz/${sessionId}`
+      );
+      return res.json();
+    },
+  });
 }
 
 // ✅ Frontend → Microservice (via Server Action)
-'use server'
+('use server');
 export async function startQuizSession(topicId: string) {
   const res = await fetch(`${process.env.QUIZ_SERVICE_URL}/quiz/start`, {
     method: 'POST',
-    body: JSON.stringify({ topicId })
-  })
-  return res.json()
+    body: JSON.stringify({ topicId }),
+  });
+  return res.json();
 }
 ```
 
@@ -415,6 +422,7 @@ app/api/
 ```
 
 **Backend microservices:**
+
 - User management → `user-management-service` (port 3001)
 - Quiz logic → `quiz-session-service` (port 3003)
 - Learning engine → `learning-engine-service` (port 8000)
@@ -428,6 +436,7 @@ Frontend calls these directly through NGINX API Gateway.
 ## 🚀 Getting Started
 
 ### Prerequisites
+
 - **Node.js 20+**
 - **pnpm 9+**
 
@@ -509,6 +518,7 @@ NEXT_PUBLIC_ENABLE_GAMIFICATION=true
 **Port:** 3000 (Next.js dev server)
 
 **Backend Services:**
+
 - User Service: `http://localhost:3001`
 - Analytics Service: `http://localhost:3002`
 - Quiz Service: `http://localhost:3003`

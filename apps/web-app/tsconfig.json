@@ -2,11 +2,7 @@
   "compilerOptions": {
     // Base config
     "target": "ES2022",
-    "lib": [
-      "dom",
-      "dom.iterable",
-      "esnext"
-    ],
+    "lib": ["dom", "dom.iterable", "esnext"],
     "jsx": "react-jsx",
     "module": "esnext",
     "moduleResolution": "bundler",
@@ -37,33 +33,15 @@
     // Path mapping - baseUrl points to src for cleaner paths
     "baseUrl": "src",
     "paths": {
-      "@/*": [
-        "./*"
-      ],
-      "@/components/*": [
-        "shared/components/*"
-      ],
-      "@/ui/*": [
-        "shared/components/ui/*"
-      ],
-      "@/features/*": [
-        "features/*"
-      ],
-      "@/lib/*": [
-        "shared/lib/*"
-      ],
-      "@/hooks/*": [
-        "shared/hooks/*"
-      ],
-      "@/stores/*": [
-        "shared/stores/*"
-      ],
-      "@/types/*": [
-        "shared/types/*"
-      ],
-      "@/styles/*": [
-        "styles/*"
-      ]
+      "@/*": ["./*"],
+      "@/components/*": ["shared/components/*"],
+      "@/ui/*": ["shared/components/ui/*"],
+      "@/features/*": ["features/*"],
+      "@/lib/*": ["shared/lib/*"],
+      "@/hooks/*": ["shared/hooks/*"],
+      "@/stores/*": ["shared/stores/*"],
+      "@/types/*": ["shared/types/*"],
+      "@/styles/*": ["styles/*"]
     }
   },
   "include": [
@@ -73,7 +51,5 @@
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts"
   ],
-  "exclude": [
-    "node_modules"
-  ]
+  "exclude": ["node_modules"]
 }

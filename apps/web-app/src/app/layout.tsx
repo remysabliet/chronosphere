@@ -1,12 +1,12 @@
-import type { Metadata } from 'next'
-import { Inter } from 'next/font/google'
-import '../styles/globals.css'
+import type { Metadata } from 'next';
+import { Inter } from 'next/font/google';
+import '../styles/globals.css';
 
 const inter = Inter({
   subsets: ['latin'],
   variable: '--font-inter',
   display: 'swap',
-})
+});
 
 export const metadata: Metadata = {
   title: {
@@ -32,31 +32,29 @@ export const metadata: Metadata = {
     locale: 'en_US',
     url: 'https://memosphere.com',
     title: 'Memosphere - AI-Powered Adaptive Learning Platform',
-    description:
-      'Transform your learning with AI-powered adaptive education.',
+    description: 'Transform your learning with AI-powered adaptive education.',
     siteName: 'Memosphere',
   },
   twitter: {
     card: 'summary_large_image',
     title: 'Memosphere - AI-Powered Adaptive Learning Platform',
-    description:
-      'Transform your learning with AI-powered adaptive education.',
+    description: 'Transform your learning with AI-powered adaptive education.',
     creator: '@memosphere',
   },
   robots: {
     index: true,
     follow: true,
   },
-}
+};
 
 export default function RootLayout({
   children,
 }: {
-  children: React.ReactNode
+  children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={inter.variable} suppressHydrationWarning>
-      <body className="antialiased">{children}</body>
+    <html lang='en' className={inter.variable} suppressHydrationWarning>
+      <body className='antialiased'>{children}</body>
     </html>
-  )
+  );
 }

@@ -1,17 +1,15 @@
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Body, HTTPException, status
 
 from question_generation_service.db.session import SessionDep
 from question_generation_service.dependencies.services import ThemaServiceDep
+from question_generation_service.schemas.thema import ThemaResponse, ThemaRequest
 
-thema_router = APIRouter(prefix="/v1/thema", tags=["Thema & Concepts"])
+thema_router = APIRouter(prefix="/v1/thema", tags=["Thema & Topics"])
 
 
-# TO DO CREATE A MODEL FOR THE PAYLOAD
-@thema_router.post("/extract")
-def extract(raw_user_input, service: ThemaServiceDep) -> dict[str, str]:
-    """
-    Comments
-    """
-
-    print(f"raw_user_input {raw_user_input}")
-    return {"thema": "test", "topics": "val"}
+@thema_router.post("/", response_model=ThemaResponse)
+async def extract_thema_topics_from_raw_input(
+    service: ThemaServiceDep, body: ThemaRequest
+):
+    print(f"Router raw_user_input {body.raw_user_input}")
+    return await service.extract_thema_topic_from_raw_input(body.raw_user_input)

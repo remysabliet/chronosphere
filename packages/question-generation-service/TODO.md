@@ -9,8 +9,8 @@ This document describes what needs to be developed for the `question-generation-
 The service is responsible for:
 
 1. **Thema & Concept Analysis**
-   - Turn raw user text into a normalized `thema` + `topic`.
-   - Generate atomic concepts and their possible Bloom levels.
+   - Turn raw user text into a normalized `thema` + `topics`.
+   - Generate thema and their possible topics
 
 2. **Question Generation & Validation**
    - Generate questions from concept–Bloom pairs using Mistral.

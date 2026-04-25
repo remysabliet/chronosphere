@@ -3,7 +3,7 @@ from fastapi import Depends
 
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 
-from question_generation_service.db.config import settings
+from question_generation_service.core.config import settings
 
 # Create a db engine to connect with DB
 engine = create_async_engine(

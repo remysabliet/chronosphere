@@ -96,8 +96,8 @@ Automated quality checks with Husky:
 
 ## 📚 Documentation
 
-- [Architecture Overview](docs/infra-architecture.md)
-- [Database Schema](docs/db-schema.md)
+- [Architecture Overview](docs/architecture/infra-architecture.md)
+- [Database Schema](docs/architecture/db-schema.md)
 - [API Documentation](docs/api.md)
 - [Deployment Guide](docs/deployment.md)
 

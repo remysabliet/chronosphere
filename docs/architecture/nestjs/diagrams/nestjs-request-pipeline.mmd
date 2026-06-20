@@ -1,0 +1,32 @@
+sequenceDiagram
+    participant C as Client
+    participant G as Guard
+    participant I as Interceptor
+    participant P as Pipe
+    participant Ctrl as Controller
+    participant S as Service
+    participant R as Repository
+    participant DB as PostgreSQL
+    participant F as Exception Filter
+
+    C->>G: HTTP request + Bearer token
+    G->>G: verify JWT, attach req.user
+    G->>I: allow
+    I->>I: start timer / correlation id
+    I->>P: forward
+    P->>P: validate + transform body to DTO
+    P->>Ctrl: call handler(dto)
+    Ctrl->>S: businessMethod(dto)
+    S->>R: query/persist
+    R->>DB: SQL (Knex query builder)
+    DB-->>R: rows
+    R-->>S: domain object
+    alt success
+        S-->>Ctrl: response DTO
+        Ctrl-->>I: return value
+        I-->>C: HTTP 200 + JSON (logged)
+    else domain error thrown
+        S-->>F: DomainError
+        F->>F: map to status code
+        F-->>C: HTTP 4xx/5xx + error body
+    end

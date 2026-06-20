@@ -1,0 +1,35 @@
+sequenceDiagram
+    participant Ctrl as QuizSessionController
+    participant S as QuizSessionService
+    participant R as QuizSessionRepository
+    participant OB as OutboxRepository
+    participant DB as PostgreSQL
+    participant Pub as OutboxPublisher
+    participant Broker as NATS
+    participant AH as Analytics MessageHandler
+    participant AS as AnalyticsService
+    participant IDX as ProcessedEvents (idempotency)
+
+    Ctrl->>S: completeSession(sessionId)
+    S->>DB: BEGIN
+    S->>R: markCompleted(sessionId)
+    S->>OB: insert SessionCompletedEvent
+    S->>DB: COMMIT
+    Note over R,OB: same transaction — no ghost events
+
+    loop poll every N seconds
+        Pub->>DB: SELECT unpublished outbox rows
+        Pub->>Broker: publish SessionCompletedEvent
+        Pub->>DB: mark row published
+    end
+
+    Broker->>AH: @EventPattern('session.completed')
+    AH->>AS: handle(event)
+    AS->>IDX: seen(event.id)?
+    alt already processed
+        AS-->>AH: ack (no-op)
+    else new event
+        AS->>AS: computeMetrics + declareMastery
+        AS->>IDX: record(event.id)
+        AS-->>AH: ack
+    end

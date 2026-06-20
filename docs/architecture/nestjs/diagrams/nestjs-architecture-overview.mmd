@@ -1,0 +1,45 @@
+flowchart TB
+    Client(["HTTP client / API Gateway"])
+
+    subgraph Edge["Request pipeline (per request)"]
+        Guard["Guard\nAuthN/AuthZ"]
+        Interceptor["Interceptor\nlogging · timing"]
+        Pipe["Pipe\nValidationPipe(DTO)"]
+    end
+
+    subgraph ModuleBoundary["Feature Module (e.g. quiz-session/)"]
+        Controller["Controller\nHTTP I/O only"]
+        MessageHandler["Message Handler\n@EventPattern/@MessagePattern"]
+        Service["Service\nbusiness logic"]
+        Repository["Repository\nKnex queries, one aggregate"]
+        Entity["Entity\nDB row shape"]
+    end
+
+    Outbox[("Outbox table\nsame txn as write")]
+    Publisher["Outbox Publisher\npolls + publishes"]
+    Broker[["NATS / message broker"]]
+
+    Client2[("Other microservice")]
+    OtherClient["Client\nHTTP/gRPC wrapper"]
+
+    DB[("Shared PostgreSQL\nschema owned by migration-service")]
+    Filter["Exception Filter\ndomain error -> HTTP/RPC error"]
+
+    Client --> Guard --> Interceptor --> Pipe --> Controller
+    Broker --> MessageHandler
+
+    Controller --> Service
+    MessageHandler --> Service
+    Service --> Repository
+    Repository --> Entity
+    Repository --> DB
+
+    Service --> OtherClient
+    OtherClient --> Client2
+
+    Service -->|same transaction| Outbox
+    Outbox --> Publisher
+    Publisher --> Broker
+
+    Service -.throws DomainError.-> Filter
+    Filter -.maps to status.-> Controller

@@ -6,6 +6,7 @@
     "source.fixAll.eslint": "always",
     "source.organizeImports": "explicit"
   },
+
   "eslint.probe": [
     "javascript",
     "javascriptreact",

@@ -4,7 +4,7 @@ from typing import Optional
 
 class ThemaResponse(BaseModel):
     thema: str
-    topics: list[str | None]
+    topics: list[str]
     raw_user_input: str
 
 

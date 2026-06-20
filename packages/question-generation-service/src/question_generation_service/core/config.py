@@ -1,3 +1,4 @@
+from functools import lru_cache
 from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -9,8 +10,11 @@ ENV_PATH = ROOT_DIR / ".env"
 class Settings(BaseSettings):
     DATABASE_URL: str
     MISTRAL_API_KEY: str
+    DEBUG: bool = False
 
     model_config = SettingsConfigDict(env_file=str(ENV_PATH), extra="ignore")
 
 
-settings = Settings()  # type: ignore[call-arg]
+@lru_cache
+def get_settings() -> Settings:
+    return Settings()  # pyright: ignore[reportCallIssue]

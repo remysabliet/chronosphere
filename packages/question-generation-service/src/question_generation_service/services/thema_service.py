@@ -1,37 +1,28 @@
-from sqlalchemy.ext.asyncio import AsyncSession
-from mistralai.client import Mistral
-from mistralai.client.models import UserMessage, SystemMessage
-
+from question_generation_service.clients.mistral_client import chat_complete
+from question_generation_service.prompts.thema_topic_extract import (
+    PROMPT_1_CONFIG,
+    PROMPT_1_SYSTEM,
+)
+from question_generation_service.repositories.thema_repository import ThemaRepository
 from question_generation_service.schemas.thema import ThemaResponse
-from question_generation_service.core.config import settings
 
-client = Mistral(api_key=settings.MISTRAL_API_KEY)
+# extracted_topic is varchar(255) in the DB; joined topics are truncated to fit.
+EXTRACTED_TOPIC_MAX_LENGTH = 255
 
 
 class ThemaService:
+    def __init__(self, repository: ThemaRepository):
+        self.repository = repository
 
-    def __init__(self, session: AsyncSession):
-        self.session = session
-
-    # Extract thema/topic pair from raw_user_input
-
-    async def extract_thema_topic_from_raw_input(
-        self, raw_user_input: str
-    ) -> ThemaResponse:
-        response = await client.chat.complete_async(
-            model="mistral-large-latest",
-            messages=[
-                {"role": "system", "content": "You are a helpful assistant."},
-                {"role": "user", "content": raw_user_input},
-            ],  # type: ignore[arg-type]
+    async def extract_thema_topic_from_raw_input(self, raw_user_input: str) -> ThemaResponse:
+        result = await chat_complete(
+            system_msg=PROMPT_1_SYSTEM, user_msg=raw_user_input, config=PROMPT_1_CONFIG
         )
-
-        message = response.choices[0].message if response.choices else None
-        content = message.content if message else ""
-        text = content if isinstance(content, str) else "Nothing"
-        print(response)
-        return ThemaResponse(
-            thema="thema",
-            topics=[text],
+        extracted_topic = ", ".join(result["topics"])[:EXTRACTED_TOPIC_MAX_LENGTH]
+        await self.repository.save(
             raw_user_input=raw_user_input,
+            extracted_thema=result["thema"],
+            extracted_topic=extracted_topic,
+            extraction_model=PROMPT_1_CONFIG.model,
         )
+        return ThemaResponse(raw_user_input=raw_user_input, **result)

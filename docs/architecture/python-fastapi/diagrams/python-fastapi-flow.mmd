@@ -1,0 +1,10 @@
+flowchart LR
+    A[Router] -->|Depends| B[Service]
+    B --> C[Repository]
+    C --> D[(Database)]
+    B --> I[Client]
+    I --> E[External API\nAI / 3rd-party]
+    F[Schemas] -.validates I/O.-> A
+    G[Models] -.maps rows.-> C
+    H[Core Config] -.settings.-> C
+    H -.settings.-> I

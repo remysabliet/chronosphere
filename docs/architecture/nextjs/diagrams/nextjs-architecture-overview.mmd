@@ -1,0 +1,19 @@
+flowchart TB
+    subgraph App["app/ (routes)"]
+        AppNode["page.tsx · layout.tsx · api/*/route.ts"]
+    end
+
+    subgraph Feature["features/&lt;feature&gt;/"]
+        FeatureNode["components/ · server/queries.ts · server/actions.ts · hooks/"]
+    end
+
+    subgraph Shared["shared/"]
+        SharedNode["components/ui · lib/api-client.ts · hooks/ · stores/"]
+    end
+
+    Microservice[("Backend microservice REST API")]
+
+    App -->|may import| Feature
+    App -->|may import| Shared
+    Feature -->|may import| Shared
+    Shared -->|HTTP| Microservice

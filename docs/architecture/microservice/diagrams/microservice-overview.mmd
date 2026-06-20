@@ -1,0 +1,64 @@
+flowchart TB
+    User(["Learner / Admin / Moderator"])
+
+    subgraph Client["Client"]
+        WebApp["web-app (Next.js)"]
+    end
+
+    subgraph Edge["Edge"]
+        Gateway["NGINX API Gateway (K8s on EC2)"]
+    end
+
+    subgraph Core["Core Adaptive Loop"]
+        UserMgmt["User Management Service (NestJS)"]
+        QuizSession["Quiz Session Service (NestJS)"]
+        LearningEngine["Learning Engine Service (FastAPI)"]
+        QuestionGen["Question Generation Service (FastAPI)"]
+    end
+
+    subgraph Support["Supporting Services"]
+        Analytics["Analytics Service (NestJS)"]
+        ContentMgmt["Content Management Service (NestJS)"]
+        Notification["Notification Service (NestJS)"]
+    end
+
+    subgraph Data["Data Layer"]
+        Postgres[("Amazon RDS PostgreSQL")]
+        Redis[("Amazon ElastiCache Redis - optional")]
+    end
+
+    subgraph External["External Services"]
+        Cognito["Amazon Cognito - OAuth2"]
+        Mistral["Mistral Large API"]
+    end
+
+    User --> WebApp
+    WebApp --> Gateway
+
+    Gateway --> UserMgmt
+    Gateway --> QuizSession
+    Gateway --> Analytics
+    Gateway --> ContentMgmt
+
+    UserMgmt --> Cognito
+
+    QuizSession <--> LearningEngine
+    QuizSession --> QuestionGen
+    QuestionGen --> Mistral
+    QuestionGen -. flagged content .-> ContentMgmt
+
+    QuizSession -- session complete --> Analytics
+    LearningEngine -- review queue --> Notification
+    ContentMgmt -- pending reviews --> Notification
+    Analytics -- progress updates --> Notification
+
+    UserMgmt --> Postgres
+    QuizSession --> Postgres
+    LearningEngine --> Postgres
+    QuestionGen --> Postgres
+    Analytics --> Postgres
+    ContentMgmt --> Postgres
+    Notification --> Postgres
+
+    QuizSession -.-> Redis
+    LearningEngine -.-> Redis

@@ -1,0 +1,18 @@
+sequenceDiagram
+    participant Client
+    participant Router
+    participant Dependency as Dependencies (DI)
+    participant Service
+    participant Repository
+    participant DB as Database
+
+    Client->>Router: HTTP request (Pydantic schema)
+    Router->>Dependency: Depends(get_xxx_service)
+    Dependency->>Service: build Service(repository)
+    Router->>Service: call business method(schema)
+    Service->>Repository: fetch/persist data
+    Repository->>DB: SQL query (async session)
+    DB-->>Repository: rows
+    Repository-->>Service: domain/model objects
+    Service-->>Router: response schema
+    Router-->>Client: HTTP response (JSON)

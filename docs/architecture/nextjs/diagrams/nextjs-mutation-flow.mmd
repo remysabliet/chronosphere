@@ -1,0 +1,17 @@
+sequenceDiagram
+    participant U as User (Browser)
+    participant CC as Client Component
+    participant SA as Server Action
+    participant API as API Client
+    participant MS as Microservice
+
+    U->>CC: submit form
+    CC->>SA: call action(formData)
+    SA->>SA: validate (zod schema)
+    SA->>API: POST /resource
+    API->>MS: HTTP request
+    MS-->>API: response
+    API-->>SA: typed result
+    SA->>SA: revalidateTag('resource')
+    SA-->>CC: return ActionState
+    CC-->>U: UI updates (useActionState)

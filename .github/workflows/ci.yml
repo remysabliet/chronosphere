@@ -61,14 +61,28 @@ jobs:
           version: latest
           virtualenvs-create: true
           virtualenvs-in-project: true
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
       - name: Install Python dependencies
         run: |
           cd packages/learning-engine-service
           poetry install
           cd ../question-generation-service
-          poetry install
-      - name: Run Python unit tests
-        run: pnpm run test:python:unit
+          uv sync --dev
+          cd ../shared-python
+          uv sync --dev
+      - name: Run learning-engine-service unit tests
+        run: |
+          cd packages/learning-engine-service
+          poetry run pytest tests/unit/ --cov=learning_engine_service --cov-report=term-missing --cov-fail-under=80
+      - name: Run question-generation-service unit tests
+        run: |
+          cd packages/question-generation-service
+          uv run pytest tests/unit/ --cov=question_generation_service --cov-report=term-missing --cov-fail-under=80
+      - name: Run shared-python unit tests
+        run: |
+          cd packages/shared-python
+          uv run pytest tests/ --cov=memosphere_auth --cov-report=term-missing --cov-fail-under=80
 
   test-integration-nodejs:
     runs-on: ubuntu-latest
@@ -132,16 +146,29 @@ jobs:
           version: latest
           virtualenvs-create: true
           virtualenvs-in-project: true
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
       - name: Install Python dependencies
         run: |
           cd packages/learning-engine-service
           poetry install
           cd ../question-generation-service
-          poetry install
-      - name: Run Python integration tests
-        run: pnpm run test:python:integration
+          uv sync --dev
+      - name: Run learning-engine-service integration tests
+        run: |
+          cd packages/learning-engine-service
+          poetry run pytest tests/integration/
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/memosphere_test
+      - name: Run question-generation-service integration tests
+        run: |
+          cd packages/question-generation-service
+          uv run pytest tests/integration/
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/memosphere_test
+          MISTRAL_API_KEY: placeholder
+          COGNITO_ISSUER: https://cognito-idp.us-east-1.amazonaws.com/placeholder
+          COGNITO_CLIENT_ID: placeholder
 
   test-e2e:
     runs-on: ubuntu-latest

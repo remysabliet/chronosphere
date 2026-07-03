@@ -35,6 +35,18 @@ pnpm test
 pnpm build
 ```
 
+## Testing
+
+```bash
+# Run tests with coverage (requires ≥80% line coverage)
+pnpm test:coverage
+
+# Run tests in watch mode
+pnpm test
+```
+
+Tests live in `tests/unit/` and cover the `src/index.ts` barrel exports (auth utilities). Coverage uses vitest + @vitest/coverage-v8.
+
 ## Usage in Services
 
 This package is consumed by other services - no standalone port needed.

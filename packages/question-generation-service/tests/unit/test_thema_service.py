@@ -1,9 +1,13 @@
 import json
-from uuid import uuid4
+from typing import TypedDict
+from uuid import UUID, uuid4
 
 import pytest
 
 from question_generation_service.core.exceptions import ConflictError, NotFoundError
+from question_generation_service.repositories.thema_repository import (
+    ThemaEntryProtocol,
+)
 from question_generation_service.schemas.thema import (
     AmbiguousThema,
     ConfirmRequest,
@@ -15,7 +19,7 @@ from question_generation_service.schemas.thema import (
 from question_generation_service.services.thema_service import ThemaService
 
 
-def _sample(thema, domain, topics):
+def _sample(thema: str, domain: str, topics: list[str]) -> dict[str, object]:
     return {
         "thema": thema,
         "domain": domain,
@@ -25,36 +29,71 @@ def _sample(thema, domain, topics):
     }
 
 
+class _SavedKwargs(TypedDict):
+    raw_user_input: str
+    extracted_thema: str
+    extracted_topic: str
+    extraction_model: str
+    extraction_confidence: float
+    notes: str
+
+
 class FakeEntry:
-    def __init__(self, notes, raw_user_input="raw input"):
-        self.id = uuid4()
-        self.notes = notes
-        self.raw_user_input = raw_user_input
-        self.extracted_thema = None
-        self.extracted_topic = None
-        self.user_corrected = False
-        self.user_correction = None
+    def __init__(self, notes: str | None, raw_user_input: str = "raw input") -> None:
+        self.id: UUID = uuid4()
+        self.notes: str | None = notes
+        self.raw_user_input: str = raw_user_input
+        self.extracted_thema: str | None = None
+        self.extracted_topic: str | None = None
+        self.user_corrected: bool = False
+        self.user_correction: str | None = None
 
 
 class FakeThemaRepository:
-    def __init__(self, entry=None):
-        self.saved: dict | None = None
-        self.entry = entry
+    def __init__(self, entry: FakeEntry | None = None) -> None:
+        self.saved: _SavedKwargs | None = None
+        self.entry: FakeEntry | None = entry
 
-    async def save(self, **kwargs):
-        self.saved = kwargs
-        self.entry = FakeEntry(kwargs["notes"], raw_user_input=kwargs["raw_user_input"])
+    async def save(
+        self,
+        raw_user_input: str,
+        extracted_thema: str,
+        extracted_topic: str,
+        extraction_model: str,
+        extraction_confidence: float,
+        notes: str,
+    ) -> FakeEntry:
+        self.saved = _SavedKwargs(
+            raw_user_input=raw_user_input,
+            extracted_thema=extracted_thema,
+            extracted_topic=extracted_topic,
+            extraction_model=extraction_model,
+            extraction_confidence=extraction_confidence,
+            notes=notes,
+        )
+        self.entry = FakeEntry(notes, raw_user_input=raw_user_input)
         return self.entry
 
-    async def get(self, extraction_id):
+    async def get(self, extraction_id: UUID) -> FakeEntry | None:
         return self.entry
 
-    async def update_on_confirm(self, entry, **kwargs):
-        for k, v in kwargs.items():
-            setattr(entry, k, v)
+    async def update_on_confirm(
+        self,
+        entry: ThemaEntryProtocol,
+        extracted_thema: str,
+        extracted_topic: str,
+        notes: str,
+        user_corrected: bool,
+        user_correction: str | None,
+    ) -> ThemaEntryProtocol:
+        entry.extracted_thema = extracted_thema
+        entry.extracted_topic = extracted_topic
+        entry.notes = notes
+        entry.user_corrected = user_corrected
+        entry.user_correction = user_correction
         return entry
 
-    async def mark_superseded(self, entry, notes):
+    async def mark_superseded(self, entry: ThemaEntryProtocol, notes: str) -> ThemaEntryProtocol:
         entry.notes = notes
         return entry
 
@@ -159,8 +198,10 @@ async def test_refine_supersedes_original_and_reextracts(monkeypatch):
 
     assert isinstance(result, ResolvedThema)
     assert result.thema == "Computer Architecture"
+    assert entry.notes is not None
     assert json.loads(entry.notes)["status"] == "superseded"
     assert json.loads(entry.notes)["superseded_by"] == str(result.extraction_id)
+    assert repo.saved is not None
     assert "CLARIFICATION: I mean CPU design" in repo.saved["raw_user_input"]
 
 
@@ -180,6 +221,7 @@ async def test_refine_allowed_after_confirmation(monkeypatch):
     result = await service.refine(entry.id, RefineRequest(clarification="actually computing"))
 
     assert isinstance(result, ResolvedThema)
+    assert entry.notes is not None
     assert json.loads(entry.notes)["status"] == "superseded"
 
 
@@ -223,6 +265,7 @@ async def test_confirm_default_rank_not_flagged_as_correction():
     assert isinstance(result, ResolvedThema)
     assert result.thema == "If Statement"
     assert entry.user_corrected is False
+    assert entry.notes is not None
     assert json.loads(entry.notes)["status"] == "confirmed"
 
 

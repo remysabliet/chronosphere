@@ -1,5 +1,5 @@
 import json
-from typing import Any
+from typing import Any, TypedDict
 from uuid import UUID
 
 from question_generation_service.clients.mistral_client import chat_complete_samples
@@ -13,7 +13,7 @@ from question_generation_service.prompts.thema_topic_extract import (
     PROMPT_1_CONFIG,
     PROMPT_1_SYSTEM,
 )
-from question_generation_service.repositories.thema_repository import ThemaRepository
+from question_generation_service.repositories.thema_repository import ThemaRepositoryProtocol
 from question_generation_service.schemas.thema import (
     AmbiguousThema,
     ConfirmRequest,
@@ -25,19 +25,60 @@ from question_generation_service.schemas.thema import (
     UnresolvedThema,
 )
 
-# extracted_topic is varchar(255) in the DB; joined topics are truncated to fit.
 EXTRACTED_TOPIC_MAX_LENGTH = 255
 MAX_EXPOSED_CANDIDATES = 3
 MAX_EXPOSED_ALTERNATES = 2
-# raw_user_input is capped at 10000 chars (ThemaRequest); refine appends to it each round.
 MAX_REFINED_INPUT_LENGTH = 10000
 
-# Decision outcome -> persisted status (extract is never terminal: confirm finalizes).
 _PERSIST_STATUS = {
     "resolved": "pending_confirmation",
     "ambiguous": "pending_disambiguation",
     "unresolved": "unresolved",
 }
+
+
+class _RawCandidate(TypedDict):
+    thema: str
+    domain: str
+    disambiguator: str
+    confirmation: str
+    topics: list[str]
+    confidence: float
+
+
+class _Candidate(_RawCandidate):
+    rank: int
+
+
+class _Group(TypedDict):
+    count: int
+    sample: dict[str, Any]
+
+
+class _ChosenCandidate(TypedDict):
+    thema: str
+    domain: str
+    topics: list[str]
+
+
+class _NotesPayloadBase(TypedDict):
+    status: str
+    candidates: list[_Candidate]
+
+
+class _NotesPayload(_NotesPayloadBase, total=False):
+    parent_extraction_id: str
+    superseded_by: str
+    chosen: _ChosenCandidate
+
+
+class _ResolvedFields(TypedDict):
+    thema: str
+    domain: str
+    topics: list[str]
+    confidence: float
+    confirmation: str
+    alternates: list[ThemaCandidate]
 
 
 def _build_user_message(request: ThemaRequest) -> str:
@@ -62,9 +103,9 @@ def _join_topics(topics: list[str]) -> str:
     return ", ".join(topics)[:EXTRACTED_TOPIC_MAX_LENGTH]
 
 
-def _aggregate(samples: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _aggregate(samples: list[dict[str, Any]]) -> list[_Candidate]:
     """Cluster samples by (thema, domain); vote share is the confidence."""
-    groups: dict[tuple[str, str], dict[str, Any]] = {}
+    groups: dict[tuple[str, str], _Group] = {}
     order: list[tuple[str, str]] = []
     for s in samples:
         key = (s["thema"].strip().lower(), s["domain"])
@@ -74,32 +115,41 @@ def _aggregate(samples: list[dict[str, Any]]) -> list[dict[str, Any]]:
         groups[key]["count"] += 1
 
     total = len(samples)
-    candidates = []
+    raw: list[_RawCandidate] = []
     for key in order:
         g = groups[key]
         s = g["sample"]
-        candidates.append(
-            {
-                "thema": s["thema"],
-                "domain": s["domain"],
-                "disambiguator": s["disambiguator"],
-                "confirmation": s["confirmation"],
-                "topics": s["topics"],
-                "confidence": round(g["count"] / total, 3),
-            }
+        raw.append(
+            _RawCandidate(
+                thema=s["thema"],
+                domain=s["domain"],
+                disambiguator=s["disambiguator"],
+                confirmation=s["confirmation"],
+                topics=s["topics"],
+                confidence=round(g["count"] / total, 3),
+            )
         )
-    candidates.sort(key=lambda c: c["confidence"], reverse=True)
-    for rank, c in enumerate(candidates, start=1):
-        c["rank"] = rank
-    return candidates
+    raw.sort(key=lambda c: c["confidence"], reverse=True)
+    return [_Candidate(**raw_c, rank=rank) for rank, raw_c in enumerate(raw, start=1)]
+
+
+def _resolved_fields(candidate: _Candidate, alternates: list[ThemaCandidate]) -> _ResolvedFields:
+    return _ResolvedFields(
+        thema=candidate["thema"],
+        domain=candidate["domain"],
+        topics=candidate["topics"],
+        confidence=candidate["confidence"],
+        confirmation=candidate["confirmation"],
+        alternates=alternates,
+    )
 
 
 class ThemaService:
-    def __init__(self, repository: ThemaRepository):
+    def __init__(self, repository: ThemaRepositoryProtocol):
         self.repository = repository
         self.settings = get_settings()
 
-    def _decide(self, candidates: list[dict[str, Any]], *, is_refine: bool) -> str:
+    def _decide(self, candidates: list[_Candidate], *, is_refine: bool) -> str:
         top = candidates[0]
         second = candidates[1] if len(candidates) > 1 else None
         t_high = self.settings.THEMA_REFINE_T_HIGH if is_refine else self.settings.THEMA_T_HIGH
@@ -123,7 +173,7 @@ class ThemaService:
         decision = self._decide(candidates, is_refine=parent_extraction_id is not None)
         top = candidates[0]
 
-        notes_payload: dict[str, Any] = {
+        notes_payload: _NotesPayload = {
             "status": _PERSIST_STATUS[decision],
             "candidates": candidates,
         }
@@ -167,8 +217,8 @@ class ThemaService:
         if entry is None or not entry.notes:
             raise NotFoundError(f"No extraction found for id {extraction_id}")
 
-        status = json.loads(entry.notes).get("status")
-        if status == "superseded":
+        data: _NotesPayload = json.loads(entry.notes)
+        if data["status"] == "superseded":
             raise ConflictError("This extraction has already been refined")
 
         combined_input = f"{entry.raw_user_input}\nCLARIFICATION: {request.clarification}"
@@ -183,7 +233,7 @@ class ThemaService:
             parent_extraction_id=extraction_id,
         )
 
-        superseded_notes = json.loads(entry.notes)
+        superseded_notes: _NotesPayload = json.loads(entry.notes)
         superseded_notes["status"] = "superseded"
         superseded_notes["superseded_by"] = str(result.extraction_id)
         await self.repository.mark_superseded(entry, notes=json.dumps(superseded_notes))
@@ -195,33 +245,31 @@ class ThemaService:
         if entry is None or not entry.notes:
             raise NotFoundError(f"No extraction found for id {extraction_id}")
 
-        data = json.loads(entry.notes)
-        if data.get("status") == "confirmed":
+        data: _NotesPayload = json.loads(entry.notes)
+        if data["status"] == "confirmed":
             raise ConflictError("This extraction has already been confirmed")
-        if data.get("status") == "superseded":
+        if data["status"] == "superseded":
             raise ConflictError("This extraction was refined — confirm the newer one instead")
-        candidates: list[dict[str, Any]] = data.get("candidates", [])
+        candidates = data["candidates"]
 
         chosen, corrected, correction, confidence, confirmation, domain = self._pick(
             request, candidates
         )
 
-        notes = json.dumps(
-            {
-                "status": "confirmed",
-                "candidates": candidates,
-                "chosen": {
-                    "thema": chosen["thema"],
-                    "domain": domain,
-                    "topics": chosen["topics"],
-                },
-            }
-        )
+        confirmed_payload: _NotesPayload = {
+            "status": "confirmed",
+            "candidates": candidates,
+            "chosen": _ChosenCandidate(
+                thema=chosen["thema"],
+                domain=domain,
+                topics=chosen["topics"],
+            ),
+        }
         await self.repository.update_on_confirm(
             entry,
             extracted_thema=chosen["thema"],
             extracted_topic=_join_topics(chosen["topics"]),
-            notes=notes,
+            notes=json.dumps(confirmed_payload),
             user_corrected=corrected,
             user_correction=correction,
         )
@@ -235,13 +283,13 @@ class ThemaService:
         )
 
     def _pick(
-        self, request: ConfirmRequest, candidates: list[dict[str, Any]]
-    ) -> tuple[dict[str, Any], bool, str | None, float, str, str]:
+        self, request: ConfirmRequest, candidates: list[_Candidate]
+    ) -> tuple[_Candidate, bool, str | None, float, str, str]:
         if not candidates:
             raise NotFoundError("No candidates stored for this extraction")
 
         rank = request.chosen_rank or 1
-        match: dict[str, Any] | None = next(
+        match: _Candidate | None = next(
             (c for c in candidates if c["rank"] == rank), None
         )
         if match is None:
@@ -256,16 +304,3 @@ class ThemaService:
             match["confirmation"],
             match["domain"],
         )
-
-
-def _resolved_fields(
-    candidate: dict[str, Any], alternates: list[ThemaCandidate]
-) -> dict[str, Any]:
-    return {
-        "thema": candidate["thema"],
-        "domain": candidate["domain"],
-        "topics": candidate["topics"],
-        "confidence": candidate["confidence"],
-        "confirmation": candidate["confirmation"],
-        "alternates": alternates,
-    }

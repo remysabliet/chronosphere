@@ -56,7 +56,7 @@ async def _complete(system_msg: str, user_msg: str, config: CompletionConfig) ->
         raise AIUnavailableError("Mistral API unreachable") from e
 
 
-def _parse_content(content: Any) -> dict[str, Any]:
+def _parse_content(content: object) -> dict[str, Any]:
     if not content or not isinstance(content, str):
         raise AIEmptyResponseError("Mistral returned no content")
     try:

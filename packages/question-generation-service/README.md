@@ -18,20 +18,24 @@ AI-powered question generation using Mistral Large API.
 ## API Endpoints
 
 ```
-POST /questions/generate   # Generate questions from text
-GET  /questions/:id       # Get specific question
-POST /validate/question   # Validate question quality
-POST /irt/calibrate      # Calibrate IRT parameters
+POST /v1/thema/extract              # Extract thema/topics from raw input
+POST /v1/thema/{id}/confirm         # Confirm the interpretation before generation
+POST /questions/generate            # Generate questions from text
+GET  /questions/:id                 # Get specific question
+POST /validate/question             # Validate question quality
+POST /irt/calibrate                 # Calibrate IRT parameters
 ```
+
+Interactive docs: `http://localhost:8001/scalar` (or `/docs`).
 
 ## Development
 
 ```bash
-poetry install
-poetry run uvicorn question_generation_service.main:app --reload --port 3004
+uv sync
+.venv/bin/uvicorn question_generation_service.main:app --reload --port 8001
 ```
 
-## Port: 3004
+## Port: 8001
 
 Best practice in teams (common compromise)
 Use Poetry as the source of truth

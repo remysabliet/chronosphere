@@ -16,7 +16,15 @@ FAKE_AUDIENCE = "fake-client-id"
 _FAKE_JWKS: dict[str, Any] = {
     "keys": [{"kid": "key-1", "kty": "RSA", "n": "abc", "e": "AQAB"}]
 }
-_FAKE_CLAIMS: dict[str, Any] = {"sub": "user-123", "email": "user@example.com"}
+_FAKE_CLAIMS: dict[str, Any] = {
+    "sub": "user-123",
+    "iss": FAKE_ISSUER,
+    "aud": FAKE_AUDIENCE,
+    "exp": int(time.time()) + 3600,
+    "iat": int(time.time()),
+    "token_use": "id",
+    "email": "user@example.com",
+}
 
 
 def _verifier() -> CognitoTokenVerifier:
@@ -132,7 +140,8 @@ class TestVerify:
             with patch("memosphere_auth.cognito.jwt.decode", return_value=_FAKE_CLAIMS):
                 result = await verifier.verify("valid.jwt.token")
 
-        assert result == _FAKE_CLAIMS
+        assert result.sub == "user-123"
+        assert result.email == "user@example.com"
 
 
 class TestCall:
@@ -154,4 +163,5 @@ class TestCall:
             with patch("memosphere_auth.cognito.jwt.decode", return_value=_FAKE_CLAIMS):
                 result = await verifier(credentials=_bearer("valid.token"))
 
-        assert result == _FAKE_CLAIMS
+        assert result.sub == "user-123"
+        assert result.email == "user@example.com"

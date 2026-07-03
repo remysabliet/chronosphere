@@ -295,7 +295,40 @@ services:
     restart: unless-stopped
     volumes:
       - ../../packages/learning-engine-service/src:/app/packages/learning-engine-service/src
-    command: uvicorn learning-engine-service.main:app --host 0.0.0.0 --port 8001 --reload
+    command: uvicorn learning_engine_service.main:app --host 0.0.0.0 --port 8002 --reload
+
+  # =============================================================================
+  # Frontend
+  # =============================================================================
+
+  web-app:
+    build:
+      context: ../../
+      dockerfile: apps/web-app/Dockerfile
+      target: base
+    container_name: memosphere-web-app
+    environment:
+      NODE_ENV: development
+      NEXT_PUBLIC_APP_URL: http://localhost:3000
+      NEXT_PUBLIC_API_URL: http://localhost:80
+      WATCHPACK_POLLING: 'true'
+    ports:
+      - '3000:3000'
+    volumes:
+      - ../../apps/web-app/src:/app/apps/web-app/src
+      - ../../apps/web-app/public:/app/apps/web-app/public
+      - ../../apps/web-app/next.config.js:/app/apps/web-app/next.config.js
+      - /app/apps/web-app/node_modules
+      - /app/node_modules
+    command: pnpm --filter @memosphere/web-app dev
+    depends_on:
+      migration-service:
+        condition: service_completed_successfully
+      user-management-service:
+        condition: service_started
+    networks:
+      - memosphere-network
+    restart: unless-stopped
 
   # =============================================================================
   # API Gateway

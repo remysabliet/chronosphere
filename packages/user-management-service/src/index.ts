@@ -8,7 +8,7 @@ import http from 'http';
 
 const PORT = process.env.PORT || 3001;
 
-const server = http.createServer((req, res) => {
+export const server = http.createServer((req, res) => {
   // Health check endpoint
   if (req.url === '/health') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -28,6 +28,8 @@ const server = http.createServer((req, res) => {
   );
 });
 
-server.listen(PORT, () => {
-  console.log(`✅ User Management Service running on port ${PORT}`);
-});
+if (process.env.NODE_ENV !== 'test') {
+  server.listen(PORT, () => {
+    console.log(`✅ Service running on port ${PORT}`);
+  });
+}

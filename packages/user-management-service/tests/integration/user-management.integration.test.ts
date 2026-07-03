@@ -1,8 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { describe, it } from 'vitest';
 
-describe('User Management Integration Tests', () => {
-  it('should connect to database', () => {
-    // Simple integration test to verify CI pipeline works
-    expect(true).toBe(true);
-  });
+describe('User Management Service — Integration', () => {
+  it.skip('connects to database — requires live DB; write manually as integration test', () => {});
 });

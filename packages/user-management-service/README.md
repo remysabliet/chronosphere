@@ -33,3 +33,15 @@ PORT=3001 pnpm dev
 ```
 
 ## Local Port: 3001
+
+## Testing
+
+```bash
+# Run tests with coverage (requires ≥80% line coverage)
+pnpm test:coverage
+
+# Run tests in watch mode
+pnpm test
+```
+
+Tests live in `tests/unit/`. Coverage is measured on `src/**/*.ts` using vitest + @vitest/coverage-v8.

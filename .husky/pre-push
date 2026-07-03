@@ -4,5 +4,6 @@
 # Validate branch name
 ./scripts/validate-branch-name.sh
 
-# Run tests
-pnpm run test:unit
+# Run all unit tests with coverage thresholds (fails if any service drops below 80%)
+pnpm run test:node:coverage
+pnpm run test:python:unit

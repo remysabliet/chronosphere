@@ -46,6 +46,8 @@ mypy = "^1.7.0"
 pre-commit = "^3.5.0"
 # Testing ML algorithms
 hypothesis = "^6.92.0"
+ruff = "^0.8.0"
+pyright = "^1.1.0"
 
 [build-system]
 requires = ["poetry-core"]

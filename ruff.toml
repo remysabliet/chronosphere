@@ -1,0 +1,28 @@
+line-length = 100
+target-version = "py313"
+
+[lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "SIM", # flake8-simplify
+]
+ignore = ["E501"] # line-too-long handled by formatter
+
+[lint.isort]
+known-first-party = [
+    "learning_engine_service",
+    "question_generation_service",
+    "memosphere_auth",
+]
+
+[format]
+quote-style = "double"
+indent-style = "space"
+
+[exclude]
+extend = ["*/migrations/*", ".venv", "__pycache__"]

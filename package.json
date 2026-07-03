@@ -61,6 +61,10 @@
     ],
     "*.{json,md,yml,yaml,css}": [
       "prettier --write"
+    ],
+    "*.py": [
+      "uvx ruff check --fix",
+      "uvx ruff format"
     ]
   },
   "keywords": [],

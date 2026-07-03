@@ -70,6 +70,7 @@ services:
     build:
       context: ../../
       dockerfile: packages/user-management-service/Dockerfile
+      target: base
     container_name: memosphere-user-management
     environment:
       NODE_ENV: development
@@ -102,6 +103,7 @@ services:
     build:
       context: ../../
       dockerfile: packages/content-management-service/Dockerfile
+      target: base
     container_name: memosphere-content-management
     environment:
       NODE_ENV: development
@@ -132,6 +134,7 @@ services:
     build:
       context: ../../
       dockerfile: packages/quiz-session-service/Dockerfile
+      target: base
     container_name: memosphere-quiz-session
     environment:
       NODE_ENV: development
@@ -168,6 +171,7 @@ services:
     build:
       context: ../../
       dockerfile: packages/analytics-service/Dockerfile
+      target: base
     container_name: memosphere-analytics
     environment:
       NODE_ENV: development
@@ -198,6 +202,7 @@ services:
     build:
       context: ../../
       dockerfile: packages/notification-service/Dockerfile
+      target: base
     container_name: memosphere-notification
     environment:
       NODE_ENV: development
@@ -242,8 +247,10 @@ services:
       PORT: 8001
       DATABASE_URL: postgresql://memosphere:memosphere_secure_dev_2025!@postgres:5432/memosphere_${ENVIRONMENT:-development}
       REDIS_URL: redis://redis:6379
-      MISTRAL_API_KEY: your_dev_mistral_api_key_here
-      OPENAI_API_KEY: your_dev_openai_api_key_here
+      MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      COGNITO_ISSUER: ${COGNITO_ISSUER:-}
+      COGNITO_CLIENT_ID: ${COGNITO_CLIENT_ID:-}
     ports:
       - '8001:8001'
     depends_on:

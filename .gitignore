@@ -17,7 +17,7 @@ build/
 .next/
 out/
 .nuxt/
-public/
+*.tsbuildinfo
 
 # Environment variables
 .env

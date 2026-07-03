@@ -7,12 +7,32 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import jwt
 from jose.exceptions import JOSEError
+from pydantic import BaseModel, ConfigDict, Field
 
 logger = logging.getLogger(__name__)
 
 _JWKS_CACHE_TTL_SECONDS = 3600
 
 _bearer_scheme = HTTPBearer(auto_error=False)
+
+
+class CognitoClaims(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
+
+    sub: str
+    iss: str
+    aud: str
+    exp: int
+    iat: int
+    token_use: str
+    auth_time: int | None = None
+    email: str | None = None
+    email_verified: bool | None = None
+    name: str | None = None
+    given_name: str | None = None
+    family_name: str | None = None
+    username: str | None = Field(None, alias="cognito:username")
+    groups: list[str] | None = Field(None, alias="cognito:groups")
 
 
 class CognitoTokenVerifier:
@@ -30,15 +50,17 @@ class CognitoTokenVerifier:
 
     async def _get_jwks(self) -> dict[str, Any]:
         stale = time.monotonic() - self._jwks_fetched_at > _JWKS_CACHE_TTL_SECONDS
-        if self._jwks is None or stale:
-            async with httpx.AsyncClient() as client:
-                response = await client.get(f"{self.issuer}/.well-known/jwks.json")
-                response.raise_for_status()
-                self._jwks = response.json()
-                self._jwks_fetched_at = time.monotonic()
-        return self._jwks
+        if self._jwks is not None and not stale:
+            return self._jwks
+        async with httpx.AsyncClient() as client:
+            response = await client.get(f"{self.issuer}/.well-known/jwks.json")
+            response.raise_for_status()
+            jwks: dict[str, Any] = response.json()
+            self._jwks = jwks
+            self._jwks_fetched_at = time.monotonic()
+            return jwks
 
-    async def verify(self, token: str) -> dict[str, Any]:
+    async def verify(self, token: str) -> CognitoClaims:
         jwks = await self._get_jwks()
         try:
             header = jwt.get_unverified_header(token)
@@ -54,7 +76,7 @@ class CognitoTokenVerifier:
             )
 
         try:
-            return jwt.decode(
+            raw_claims: dict[str, Any] = jwt.decode(
                 token,
                 key,
                 algorithms=["RS256"],
@@ -70,10 +92,12 @@ class CognitoTokenVerifier:
                 status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token"
             ) from exc
 
+        return CognitoClaims.model_validate(raw_claims)
+
     async def __call__(
         self,
         credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
-    ) -> dict[str, Any]:
+    ) -> CognitoClaims:
         if credentials is None:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing bearer token"

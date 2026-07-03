@@ -25,6 +25,8 @@ export const ROUTES = {
   DASHBOARD: '/app/dashboard',
   PROFILE: '/app/profile',
   QUIZ_NEW: '/app/quiz/new',
+  QUIZ_NEW_WIZARD: '/app/quiz/new/wizard',
+  QUIZ_NEW_MANUAL: '/app/quiz/new/manual',
   MEMOCARDS: '/app/memocards',
   ANALYTICS: '/app/analytics',
 

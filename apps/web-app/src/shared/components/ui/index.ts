@@ -6,3 +6,4 @@ export * from './fade-in';
 export * from './input';
 export * from './label';
 export * from './separator';
+export * from './textarea';

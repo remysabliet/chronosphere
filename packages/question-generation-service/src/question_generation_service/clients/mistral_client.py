@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 from typing import Any, cast
@@ -23,7 +24,6 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 client = Mistral(api_key=settings.MISTRAL_API_KEY)
 
-
 async def aclose() -> None:
     await client.__aexit__(None, None, None)  # type: ignore[no-untyped-call]
 
@@ -34,18 +34,15 @@ async def aclose() -> None:
     stop=stop_after_attempt(3),
     reraise=True,
 )
-async def chat_complete(
-    system_msg: str, user_msg: str, config: CompletionConfig
-) -> dict[str, Any]:
+async def _complete(system_msg: str, user_msg: str, config: CompletionConfig) -> Any:
     try:
         messages: list[ChatCompletionRequestMessageTypedDict] = [
             SystemMessageTypedDict(role="system", content=system_msg),
             UserMessageTypedDict(role="user", content=user_msg),
         ]
-        response = await client.chat.complete_async(
+        return await client.chat.complete_async(
             model=config.model,
             messages=messages,
-            n=config.n,
             temperature=config.temperature,
             max_tokens=config.max_tokens,
             random_seed=config.random_seed,
@@ -58,15 +55,52 @@ async def chat_complete(
         logger.error("Mistral network error: %s", e)
         raise AIUnavailableError("Mistral API unreachable") from e
 
-    message = response.choices[0].message if response.choices else None
-    content = message.content if message else None
 
+def _parse_content(content: Any) -> dict[str, Any]:
     if not content or not isinstance(content, str):
-        logger.error("Mistral empty response: choices=%s", response.choices)
         raise AIEmptyResponseError("Mistral returned no content")
-
     try:
         return cast(dict[str, Any], json.loads(content))
     except json.JSONDecodeError as e:
         logger.error("Mistral invalid JSON: %s | raw=%s", e, content)
         raise AIInvalidResponseError("Mistral response is not valid JSON") from e
+
+
+async def chat_complete(
+    system_msg: str, user_msg: str, config: CompletionConfig
+) -> dict[str, Any]:
+    response = await _complete(system_msg, user_msg, config)
+    message = response.choices[0].message if response.choices else None
+    content = message.content if message else None
+    if content is None:
+        logger.error("Mistral empty response: choices=%s", response.choices)
+    return _parse_content(content)
+
+
+async def chat_complete_samples(
+    system_msg: str, user_msg: str, config: CompletionConfig
+) -> list[dict[str, Any]]:
+    """Self-consistency sampling: Mistral caps n=1 per request, so fan out config.n concurrent calls."""
+    responses = await asyncio.gather(
+        *(_complete(system_msg, user_msg, config) for _ in range(config.n)),
+        return_exceptions=True,
+    )
+
+    samples: list[dict[str, Any]] = []
+    for response in responses:
+        if isinstance(response, BaseException):
+            logger.error("Mistral sample failed: %s", response)
+            continue
+        if not response.choices:
+            continue
+        content = response.choices[0].message.content if response.choices[0].message else None
+        if not content or not isinstance(content, str):
+            continue
+        try:
+            samples.append(_parse_content(content))
+        except AIInvalidResponseError:
+            continue  # drop a single malformed sample; aggregate over the rest
+
+    if not samples:
+        raise AIEmptyResponseError("Mistral returned no parseable samples")
+    return samples

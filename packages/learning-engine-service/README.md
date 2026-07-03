@@ -92,4 +92,29 @@ poetry show --outdated  # List outdated packages
 poetry update          # Update to latest compatible versions
 ```
 
+## Testing
+
+Uses Poetry.
+
+```bash
+# Install dependencies (first time, includes dev deps)
+poetry install
+
+# Run unit tests
+poetry run pytest tests/unit/
+
+# With coverage report (fails if < 80%)
+poetry run pytest tests/unit/ --cov=learning_engine_service --cov-report=term-missing --cov-fail-under=80
+
+# Single file or test
+poetry run pytest tests/unit/test_health.py -v
+```
+
+Integration tests require a running PostgreSQL instance:
+
+```bash
+DATABASE_URL="postgresql://postgres:postgres@localhost:5432/memosphere_test" \
+  poetry run pytest tests/integration/
+```
+
 ## Local Port: 8002

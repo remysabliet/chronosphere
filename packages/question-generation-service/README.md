@@ -35,6 +35,32 @@ uv sync
 .venv/bin/uvicorn question_generation_service.main:app --reload --port 8001
 ```
 
+## Testing
+
+Uses `uv`. No env vars needed for unit tests — `tests/conftest.py` injects fake values before any module is imported.
+
+```bash
+# Install dev dependencies (first time)
+uv sync --dev
+
+# Run unit tests
+uv run pytest tests/unit/
+
+# With coverage report (fails if < 80%)
+uv run pytest tests/unit/ --cov=question_generation_service --cov-report=term-missing --cov-fail-under=80
+
+# Single file or test
+uv run pytest tests/unit/test_thema_router.py -v
+uv run pytest tests/unit/test_thema_service.py::test_resolved_when_clear_winner -v
+```
+
+Integration tests require a running PostgreSQL instance:
+
+```bash
+DATABASE_URL="postgresql://postgres:postgres@localhost:5432/memosphere_test" \
+  uv run pytest tests/integration/
+```
+
 ## Port: 8001
 
 Best practice in teams (common compromise)

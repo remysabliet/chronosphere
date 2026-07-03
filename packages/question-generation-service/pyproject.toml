@@ -31,7 +31,11 @@ dependencies = [
     "pydantic-settings>=2.13.1",
     "greenlet>=3.4.0",
     "tenacity>=9.0.0",
+    "memosphere-shared-auth",
 ]
+
+[tool.uv.sources]
+memosphere-shared-auth = { path = "../shared-python" }
 
 [dependency-groups]
 dev = [

@@ -10,6 +10,7 @@ from question_generation_service.core.exceptions import (
     AIEmptyResponseError,
     AIInvalidResponseError,
     AIUnavailableError,
+    ConflictError,
     DomainError,
     NotFoundError,
 )
@@ -20,6 +21,7 @@ from question_generation_service.routers.thema_router import thema_router
 
 _STATUS_BY_EXCEPTION = {
     NotFoundError: 404,
+    ConflictError: 409,
     AIUnavailableError: 503,
     AIEmptyResponseError: 502,
     AIInvalidResponseError: 502,

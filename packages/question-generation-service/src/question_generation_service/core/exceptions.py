@@ -6,6 +6,14 @@ class NotFoundError(DomainError):
     """Requested resource does not exist."""
 
 
+class ConflictError(DomainError):
+    """Requested operation conflicts with the resource's current state."""
+
+
+class InvalidInputError(DomainError):
+    """Caller supplied input that is structurally valid but semantically wrong."""
+
+
 class AIUnavailableError(DomainError):
     """Upstream AI provider unreachable or erroring."""
 

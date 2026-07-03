@@ -12,7 +12,9 @@ FROM python:3.13-slim-bookworm AS base
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    UV_PYTHON_DOWNLOADS=never \
+    UV_LINK_MODE=copy
 
 # Install system dependencies for building
 RUN apt-get update && apt-get install -y \
@@ -22,25 +24,23 @@ RUN apt-get update && apt-get install -y \
     gcc \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Poetry
-RUN pip install --no-cache-dir poetry==1.8.4
-
-# Configure Poetry
-ENV POETRY_NO_INTERACTION=1 \
-    POETRY_VIRTUALENVS_IN_PROJECT=1 \
-    POETRY_CACHE_DIR=/tmp/poetry_cache
+# Install uv
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
 # Set working directory
 WORKDIR /app
 
-# Copy Poetry configuration files AND source code
+# Copy uv configuration files AND source code
 COPY packages/question-generation-service/pyproject.toml ./packages/question-generation-service/
-COPY packages/question-generation-service/poetry.lock* ./packages/question-generation-service/
+COPY packages/question-generation-service/uv.lock ./packages/question-generation-service/
 COPY packages/question-generation-service/src ./packages/question-generation-service/src
+
+# Local path dependency (shared Cognito JWT verification across Python services)
+COPY packages/shared-python ./packages/shared-python
 
 # Install production dependencies and the package itself
 WORKDIR /app/packages/question-generation-service
-RUN poetry install --only=main && poetry cache clear --all .
+RUN uv sync --frozen
 
 # -----------------------------------------------------------------------------
 # Stage 2: Test - For CI/CD pipeline
@@ -51,12 +51,12 @@ FROM base AS test
 COPY packages/question-generation-service/ /app/packages/question-generation-service/
 
 # Install dev dependencies and the package itself
-RUN poetry install --with dev
+RUN uv sync --frozen --group dev
 
 # Run tests, linting, and type checking
-RUN poetry run pytest --verbose --cov=question_generation_service || true
-RUN poetry run black --check . || true
-RUN poetry run mypy . || true
+RUN uv run pytest --verbose --cov=question_generation_service || true
+RUN uv run black --check . || true
+RUN uv run mypy . || true
 
 # This stage is used in CI/CD to validate code quality
 

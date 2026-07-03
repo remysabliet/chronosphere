@@ -43,8 +43,20 @@ jobs:
           version: 8
       - name: Install dependencies
         run: pnpm install
-      - name: Run Node.js unit tests
-        run: pnpm run test:unit
+      - name: Run analytics-service tests
+        run: pnpm --filter @memosphere/analytics-service run test:coverage
+      - name: Run content-management-service tests
+        run: pnpm --filter @memosphere/content-management-service run test:coverage
+      - name: Run notification-service tests
+        run: pnpm --filter @memosphere/notification-service run test:coverage
+      - name: Run quiz-session-service tests
+        run: pnpm --filter @memosphere/quiz-session-service run test:coverage
+      - name: Run user-management-service tests
+        run: pnpm --filter @memosphere/user-management-service run test:coverage
+      - name: Run shared package tests
+        run: pnpm --filter @memosphere/shared run test:coverage
+      - name: Run web-app tests
+        run: pnpm --filter @memosphere/web-app run test:coverage
 
   test-unit-python:
     runs-on: ubuntu-latest

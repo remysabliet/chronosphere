@@ -17,6 +17,11 @@
   "files.associations": {
     "*.env*": "dotenv"
   },
+  "python.analysis.extraPaths": [
+    "packages/learning-engine-service/src",
+    "packages/question-generation-service/src",
+    "packages/shared-python/src"
+  ],
   "search.exclude": {
     "**/node_modules": true,
     "**/dist": true,

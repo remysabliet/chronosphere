@@ -1,6 +1,3 @@
-'use client';
-
-import { motion } from 'framer-motion';
 import { ArrowRight, Brain, Play, Sparkles } from 'lucide-react';
 import Link from 'next/link';
 
@@ -8,6 +5,7 @@ import { ROUTES } from '@/lib/constants';
 import { HeroSection } from '@/shared/components/layout/hero-section';
 import { Button } from '@/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/ui/card';
+import { FadeIn } from '@/ui/fade-in';
 
 const demoSteps = [
   {
@@ -52,7 +50,7 @@ export default function DemoPage() {
       <section className='py-24 sm:py-32' aria-labelledby='demo-steps-heading'>
         <div className='container mx-auto px-4 sm:px-6 lg:px-8'>
           <div className='text-center mb-16'>
-            <motion.div
+            <FadeIn
               initial={{ opacity: 0, y: 20 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
@@ -64,12 +62,12 @@ export default function DemoPage() {
               <p className='paragraph-lg max-w-2xl mx-auto'>
                 Follow these steps to explore Memosphere's key features.
               </p>
-            </motion.div>
+            </FadeIn>
           </div>
 
           <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 max-w-6xl mx-auto'>
             {demoSteps.map((step, index) => (
-              <motion.div
+              <FadeIn
                 key={step.title}
                 initial={{ opacity: 0, y: 20 }}
                 whileInView={{ opacity: 1, y: 0 }}
@@ -91,7 +89,7 @@ export default function DemoPage() {
                     </p>
                   </CardContent>
                 </Card>
-              </motion.div>
+              </FadeIn>
             ))}
           </div>
         </div>
@@ -105,7 +103,7 @@ export default function DemoPage() {
       >
         <div className='container mx-auto px-4 sm:px-6 lg:px-8'>
           <div className='text-center mb-12'>
-            <motion.div
+            <FadeIn
               initial={{ opacity: 0, y: 20 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
@@ -117,10 +115,10 @@ export default function DemoPage() {
               <p className='paragraph-lg max-w-2xl mx-auto'>
                 Try a real quiz session with adaptive question selection.
               </p>
-            </motion.div>
+            </FadeIn>
           </div>
 
-          <motion.div
+          <FadeIn
             initial={{ opacity: 0, scale: 0.95 }}
             whileInView={{ opacity: 1, scale: 1 }}
             viewport={{ once: true }}
@@ -152,7 +150,7 @@ export default function DemoPage() {
                 </div>
               </div>
             </Card>
-          </motion.div>
+          </FadeIn>
         </div>
       </section>
 
@@ -164,7 +162,7 @@ export default function DemoPage() {
       >
         <div className='container mx-auto px-4 sm:px-6 lg:px-8'>
           <div className='text-center mb-12'>
-            <motion.div
+            <FadeIn
               initial={{ opacity: 0, y: 20 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
@@ -176,10 +174,10 @@ export default function DemoPage() {
               <p className='paragraph-lg max-w-2xl mx-auto'>
                 Watch a guided walkthrough of Memosphere's features.
               </p>
-            </motion.div>
+            </FadeIn>
           </div>
 
-          <motion.div
+          <FadeIn
             initial={{ opacity: 0, scale: 0.95 }}
             whileInView={{ opacity: 1, scale: 1 }}
             viewport={{ once: true }}
@@ -200,7 +198,7 @@ export default function DemoPage() {
                 </div>
               </div>
             </Card>
-          </motion.div>
+          </FadeIn>
         </div>
       </section>
 
@@ -211,7 +209,7 @@ export default function DemoPage() {
       >
         <div className='container mx-auto px-4 sm:px-6 lg:px-8'>
           <div className='text-center mb-16'>
-            <motion.div
+            <FadeIn
               initial={{ opacity: 0, y: 20 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
@@ -223,11 +221,11 @@ export default function DemoPage() {
               <p className='paragraph-lg max-w-2xl mx-auto'>
                 Experience these powerful features firsthand in our demo.
               </p>
-            </motion.div>
+            </FadeIn>
           </div>
 
           <div className='grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto'>
-            <motion.div
+            <FadeIn
               initial={{ opacity: 0, x: -20 }}
               whileInView={{ opacity: 1, x: 0 }}
               viewport={{ once: true }}
@@ -250,9 +248,9 @@ export default function DemoPage() {
                   </p>
                 </CardContent>
               </Card>
-            </motion.div>
+            </FadeIn>
 
-            <motion.div
+            <FadeIn
               initial={{ opacity: 0, x: 20 }}
               whileInView={{ opacity: 1, x: 0 }}
               viewport={{ once: true }}
@@ -273,7 +271,7 @@ export default function DemoPage() {
                   </p>
                 </CardContent>
               </Card>
-            </motion.div>
+            </FadeIn>
           </div>
         </div>
       </section>
@@ -284,7 +282,7 @@ export default function DemoPage() {
         aria-labelledby='demo-cta-heading'
       >
         <div className='container mx-auto px-4 sm:px-6 lg:px-8 text-center'>
-          <motion.div
+          <FadeIn
             initial={{ opacity: 0, scale: 0.9 }}
             whileInView={{ opacity: 1, scale: 1 }}
             viewport={{ once: true }}
@@ -322,7 +320,7 @@ export default function DemoPage() {
             <p className='mt-6 text-sm text-white/70'>
               No credit card required • Free forever plan available
             </p>
-          </motion.div>
+          </FadeIn>
         </div>
       </section>
     </div>

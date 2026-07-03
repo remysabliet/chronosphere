@@ -1,6 +1,3 @@
-'use client';
-
-import { motion } from 'framer-motion';
 import {
   ArrowRight,
   Brain,
@@ -22,6 +19,7 @@ import { cn } from '@/lib/utils';
 import { HeroSection } from '@/shared/components/layout/hero-section';
 import { Button } from '@/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/ui/card';
+import { FadeIn } from '@/ui/fade-in';
 
 const featureIcons = {
   brain: Brain,
@@ -99,7 +97,7 @@ export default function HomePage() {
       <section className='py-24 sm:py-32' aria-labelledby='features-heading'>
         <div className='container mx-auto px-4 sm:px-6 lg:px-8'>
           <div className='text-center mb-16'>
-            <motion.div
+            <FadeIn
               initial={{ opacity: 0, y: 20 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
@@ -112,7 +110,7 @@ export default function HomePage() {
                 Powered by cutting-edge AI and proven learning science,
                 Memosphere adapts to your unique learning style.
               </p>
-            </motion.div>
+            </FadeIn>
           </div>
 
           <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8'>
@@ -120,7 +118,7 @@ export default function HomePage() {
               const Icon =
                 featureIcons[feature.icon as keyof typeof featureIcons];
               return (
-                <motion.div
+                <FadeIn
                   key={feature.title}
                   initial={{ opacity: 0, y: 20 }}
                   whileInView={{ opacity: 1, y: 0 }}
@@ -140,7 +138,7 @@ export default function HomePage() {
                       </p>
                     </CardContent>
                   </Card>
-                </motion.div>
+                </FadeIn>
               );
             })}
           </div>
@@ -163,7 +161,7 @@ export default function HomePage() {
       >
         <div className='container mx-auto px-4 sm:px-6 lg:px-8'>
           <div className='text-center mb-16'>
-            <motion.div
+            <FadeIn
               initial={{ opacity: 0, y: 20 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
@@ -175,7 +173,7 @@ export default function HomePage() {
               <p className='paragraph-lg max-w-2xl mx-auto'>
                 Get started in minutes and see results from day one.
               </p>
-            </motion.div>
+            </FadeIn>
           </div>
 
           <div className='grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto'>
@@ -202,7 +200,7 @@ export default function HomePage() {
                 icon: Brain,
               },
             ].map((item, index) => (
-              <motion.div
+              <FadeIn
                 key={item.step}
                 initial={{ opacity: 0, x: -20 }}
                 whileInView={{ opacity: 1, x: 0 }}
@@ -234,7 +232,7 @@ export default function HomePage() {
                     <ArrowRight className='h-8 w-8 text-brand-500' />
                   </div>
                 )}
-              </motion.div>
+              </FadeIn>
             ))}
           </div>
         </div>
@@ -247,7 +245,7 @@ export default function HomePage() {
       >
         <div className='container mx-auto px-4 sm:px-6 lg:px-8'>
           <div className='text-center mb-16'>
-            <motion.div
+            <FadeIn
               initial={{ opacity: 0, y: 20 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
@@ -260,12 +258,12 @@ export default function HomePage() {
                 Join thousands of successful learners who transformed their
                 education with Memosphere.
               </p>
-            </motion.div>
+            </FadeIn>
           </div>
 
           <div className='grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl mx-auto'>
             {TESTIMONIALS.map((testimonial, index) => (
-              <motion.div
+              <FadeIn
                 key={testimonial.name}
                 initial={{ opacity: 0, scale: 0.9 }}
                 whileInView={{ opacity: 1, scale: 1 }}
@@ -301,7 +299,7 @@ export default function HomePage() {
                     </blockquote>
                   </CardContent>
                 </Card>
-              </motion.div>
+              </FadeIn>
             ))}
           </div>
         </div>
@@ -314,7 +312,7 @@ export default function HomePage() {
       >
         <div className='container mx-auto px-4 sm:px-6 lg:px-8'>
           <div className='text-center mb-16'>
-            <motion.div
+            <FadeIn
               initial={{ opacity: 0, y: 20 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
@@ -326,12 +324,12 @@ export default function HomePage() {
               <p className='paragraph-lg max-w-2xl mx-auto'>
                 Try Memosphere with our free plan. No credit card required.
               </p>
-            </motion.div>
+            </FadeIn>
           </div>
 
           <div className='grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto'>
             {PRICING_TIERS.map((tier, index) => (
-              <motion.div
+              <FadeIn
                 key={tier.name}
                 initial={{ opacity: 0, y: 20 }}
                 whileInView={{ opacity: 1, y: 0 }}
@@ -388,7 +386,7 @@ export default function HomePage() {
                     </Button>
                   </CardContent>
                 </Card>
-              </motion.div>
+              </FadeIn>
             ))}
           </div>
 
@@ -415,7 +413,7 @@ export default function HomePage() {
         </div>
 
         <div className='container mx-auto px-4 sm:px-6 lg:px-8 text-center relative'>
-          <motion.div
+          <FadeIn
             initial={{ opacity: 0, scale: 0.9 }}
             whileInView={{ opacity: 1, scale: 1 }}
             viewport={{ once: true }}
@@ -453,7 +451,7 @@ export default function HomePage() {
             <p className='mt-6 text-sm text-white/70'>
               No credit card required • Free forever plan available
             </p>
-          </motion.div>
+          </FadeIn>
         </div>
       </section>
     </div>

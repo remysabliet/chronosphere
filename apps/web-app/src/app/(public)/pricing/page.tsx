@@ -1,6 +1,3 @@
-'use client';
-
-import { motion } from 'framer-motion';
 import { ArrowRight, CheckCircle2, HelpCircle } from 'lucide-react';
 import Link from 'next/link';
 import React from 'react';
@@ -10,6 +7,7 @@ import { cn } from '@/lib/utils';
 import { HeroSection } from '@/shared/components/layout/hero-section';
 import { Button } from '@/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/ui/card';
+import { FadeIn } from '@/ui/fade-in';
 
 const comparisonFeatures = [
   {
@@ -154,7 +152,7 @@ export default function PricingPage() {
           </h2>
           <div className='grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl mx-auto'>
             {PRICING_TIERS.map((tier, index) => (
-              <motion.div
+              <FadeIn
                 key={tier.name}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -218,7 +216,7 @@ export default function PricingPage() {
                     </Button>
                   </CardContent>
                 </Card>
-              </motion.div>
+              </FadeIn>
             ))}
           </div>
 
@@ -238,7 +236,7 @@ export default function PricingPage() {
       >
         <div className='container mx-auto px-4 sm:px-6 lg:px-8'>
           <div className='text-center mb-16'>
-            <motion.div
+            <FadeIn
               initial={{ opacity: 0, y: 20 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
@@ -250,7 +248,7 @@ export default function PricingPage() {
               <p className='paragraph-lg max-w-2xl mx-auto'>
                 See exactly what's included in each plan.
               </p>
-            </motion.div>
+            </FadeIn>
           </div>
 
           <div className='max-w-5xl mx-auto'>
@@ -315,7 +313,7 @@ export default function PricingPage() {
       <section className='py-24 sm:py-32' aria-labelledby='faq-heading'>
         <div className='container mx-auto px-4 sm:px-6 lg:px-8'>
           <div className='text-center mb-16'>
-            <motion.div
+            <FadeIn
               initial={{ opacity: 0, y: 20 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
@@ -327,12 +325,12 @@ export default function PricingPage() {
               <p className='paragraph-lg max-w-2xl mx-auto'>
                 Have questions? We have answers.
               </p>
-            </motion.div>
+            </FadeIn>
           </div>
 
           <div className='max-w-3xl mx-auto space-y-4'>
             {faqs.map((faq, index) => (
-              <motion.div
+              <FadeIn
                 key={faq.question}
                 initial={{ opacity: 0, y: 10 }}
                 whileInView={{ opacity: 1, y: 0 }}
@@ -353,7 +351,7 @@ export default function PricingPage() {
                     <p className='text-muted-foreground'>{faq.answer}</p>
                   </CardContent>
                 </Card>
-              </motion.div>
+              </FadeIn>
             ))}
           </div>
 
@@ -375,7 +373,7 @@ export default function PricingPage() {
         aria-labelledby='pricing-cta-heading'
       >
         <div className='container mx-auto px-4 sm:px-6 lg:px-8 text-center'>
-          <motion.div
+          <FadeIn
             initial={{ opacity: 0, scale: 0.9 }}
             whileInView={{ opacity: 1, scale: 1 }}
             viewport={{ once: true }}
@@ -403,7 +401,7 @@ export default function PricingPage() {
             <p className='mt-6 text-sm text-white/70'>
               No credit card required • 14-day money-back guarantee
             </p>
-          </motion.div>
+          </FadeIn>
         </div>
       </section>
     </div>

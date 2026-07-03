@@ -1,6 +1,3 @@
-'use client';
-
-import { motion } from 'framer-motion';
 import {
   ArrowRight,
   Brain,
@@ -16,6 +13,7 @@ import { ROUTES } from '@/lib/constants';
 import { HeroSection } from '@/shared/components/layout/hero-section';
 import { Button } from '@/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/ui/card';
+import { FadeIn } from '@/ui/fade-in';
 
 const values = [
   {
@@ -108,7 +106,7 @@ export default function AboutPage() {
       >
         <div className='container mx-auto px-4 sm:px-6 lg:px-8'>
           <div className='grid grid-cols-1 lg:grid-cols-2 gap-12 items-center'>
-            <motion.div
+            <FadeIn
               initial={{ opacity: 0, x: -20 }}
               whileInView={{ opacity: 1, x: 0 }}
               viewport={{ once: true }}
@@ -136,9 +134,9 @@ export default function AboutPage() {
                   everyone has access to world-class, personalized education.
                 </p>
               </div>
-            </motion.div>
+            </FadeIn>
 
-            <motion.div
+            <FadeIn
               initial={{ opacity: 0, x: 20 }}
               whileInView={{ opacity: 1, x: 0 }}
               viewport={{ once: true }}
@@ -153,7 +151,7 @@ export default function AboutPage() {
                   <p className='text-white/80'>across 100+ countries</p>
                 </div>
               </div>
-            </motion.div>
+            </FadeIn>
           </div>
         </div>
       </section>
@@ -165,7 +163,7 @@ export default function AboutPage() {
       >
         <div className='container mx-auto px-4 sm:px-6 lg:px-8'>
           <div className='text-center mb-16'>
-            <motion.div
+            <FadeIn
               initial={{ opacity: 0, y: 20 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
@@ -178,12 +176,12 @@ export default function AboutPage() {
                 These principles guide every decision we make and every feature
                 we build.
               </p>
-            </motion.div>
+            </FadeIn>
           </div>
 
           <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8'>
             {values.map((value, index) => (
-              <motion.div
+              <FadeIn
                 key={value.title}
                 initial={{ opacity: 0, y: 20 }}
                 whileInView={{ opacity: 1, y: 0 }}
@@ -201,7 +199,7 @@ export default function AboutPage() {
                     <p className='text-muted-foreground'>{value.description}</p>
                   </CardContent>
                 </Card>
-              </motion.div>
+              </FadeIn>
             ))}
           </div>
         </div>
@@ -214,7 +212,7 @@ export default function AboutPage() {
       >
         <div className='container mx-auto px-4 sm:px-6 lg:px-8'>
           <div className='text-center mb-16'>
-            <motion.div
+            <FadeIn
               initial={{ opacity: 0, y: 20 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
@@ -227,12 +225,12 @@ export default function AboutPage() {
                 Our platform combines four powerful learning technologies to
                 create the most effective learning experience.
               </p>
-            </motion.div>
+            </FadeIn>
           </div>
 
           <div className='max-w-4xl mx-auto space-y-8'>
             {howItWorks.map((item, index) => (
-              <motion.div
+              <FadeIn
                 key={item.step}
                 initial={{ opacity: 0, x: index % 2 === 0 ? -20 : 20 }}
                 whileInView={{ opacity: 1, x: 0 }}
@@ -256,7 +254,7 @@ export default function AboutPage() {
                     </div>
                   </CardHeader>
                 </Card>
-              </motion.div>
+              </FadeIn>
             ))}
           </div>
 
@@ -277,7 +275,7 @@ export default function AboutPage() {
         aria-labelledby='cta-heading'
       >
         <div className='container mx-auto px-4 sm:px-6 lg:px-8 text-center'>
-          <motion.div
+          <FadeIn
             initial={{ opacity: 0, scale: 0.9 }}
             whileInView={{ opacity: 1, scale: 1 }}
             viewport={{ once: true }}
@@ -302,7 +300,7 @@ export default function AboutPage() {
                 <ArrowRight className='ml-2 h-5 w-5' aria-hidden='true' />
               </Link>
             </Button>
-          </motion.div>
+          </FadeIn>
         </div>
       </section>
     </div>

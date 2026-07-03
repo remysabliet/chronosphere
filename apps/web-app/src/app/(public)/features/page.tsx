@@ -1,6 +1,3 @@
-'use client';
-
-import { motion } from 'framer-motion';
 import {
   ArrowRight,
   BarChart3,
@@ -25,6 +22,7 @@ import { cn } from '@/lib/utils';
 import { HeroSection } from '@/shared/components/layout/hero-section';
 import { Button } from '@/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/ui/card';
+import { FadeIn } from '@/ui/fade-in';
 import { Separator } from '@/ui/separator';
 
 const coreFeatures = [
@@ -173,7 +171,7 @@ export default function FeaturesPage() {
       >
         <div className='container mx-auto px-4 sm:px-6 lg:px-8'>
           <div className='text-center mb-16'>
-            <motion.div
+            <FadeIn
               initial={{ opacity: 0, y: 20 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
@@ -186,12 +184,12 @@ export default function FeaturesPage() {
                 Advanced AI and cognitive science working together to optimize
                 your learning experience.
               </p>
-            </motion.div>
+            </FadeIn>
           </div>
 
           <div className='space-y-16'>
             {coreFeatures.map((feature, index) => (
-              <motion.div
+              <FadeIn
                 key={feature.title}
                 initial={{ opacity: 0, y: 30 }}
                 whileInView={{ opacity: 1, y: 0 }}
@@ -247,7 +245,7 @@ export default function FeaturesPage() {
                     </div>
                   </div>
                 </Card>
-              </motion.div>
+              </FadeIn>
             ))}
           </div>
         </div>
@@ -260,7 +258,7 @@ export default function FeaturesPage() {
       >
         <div className='container mx-auto px-4 sm:px-6 lg:px-8'>
           <div className='text-center mb-16'>
-            <motion.div
+            <FadeIn
               initial={{ opacity: 0, y: 20 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
@@ -273,12 +271,12 @@ export default function FeaturesPage() {
                 Engage multiple senses with rich media content for deeper
                 understanding.
               </p>
-            </motion.div>
+            </FadeIn>
           </div>
 
           <div className='grid grid-cols-1 md:grid-cols-3 gap-8'>
             {multimediaFeatures.map((feature, index) => (
-              <motion.div
+              <FadeIn
                 key={feature.title}
                 initial={{ opacity: 0, scale: 0.9 }}
                 whileInView={{ opacity: 1, scale: 1 }}
@@ -298,7 +296,7 @@ export default function FeaturesPage() {
                     </p>
                   </CardContent>
                 </Card>
-              </motion.div>
+              </FadeIn>
             ))}
           </div>
         </div>
@@ -308,7 +306,7 @@ export default function FeaturesPage() {
       <section className='py-24 sm:py-32' aria-labelledby='platform-heading'>
         <div className='container mx-auto px-4 sm:px-6 lg:px-8'>
           <div className='text-center mb-16'>
-            <motion.div
+            <FadeIn
               initial={{ opacity: 0, y: 20 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
@@ -320,12 +318,12 @@ export default function FeaturesPage() {
               <p className='paragraph-lg max-w-2xl mx-auto'>
                 Everything you need for a seamless learning experience.
               </p>
-            </motion.div>
+            </FadeIn>
           </div>
 
           <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 max-w-5xl mx-auto'>
             {platformFeatures.map((feature, index) => (
-              <motion.div
+              <FadeIn
                 key={feature.title}
                 initial={{ opacity: 0, y: 20 }}
                 whileInView={{ opacity: 1, y: 0 }}
@@ -346,7 +344,7 @@ export default function FeaturesPage() {
                     </p>
                   </CardContent>
                 </Card>
-              </motion.div>
+              </FadeIn>
             ))}
           </div>
         </div>
@@ -360,7 +358,7 @@ export default function FeaturesPage() {
         aria-labelledby='features-cta-heading'
       >
         <div className='container mx-auto px-4 sm:px-6 lg:px-8'>
-          <motion.div
+          <FadeIn
             initial={{ opacity: 0, scale: 0.95 }}
             whileInView={{ opacity: 1, scale: 1 }}
             viewport={{ once: true }}
@@ -401,7 +399,7 @@ export default function FeaturesPage() {
                 </Button>
               </div>
             </div>
-          </motion.div>
+          </FadeIn>
         </div>
       </section>
     </div>

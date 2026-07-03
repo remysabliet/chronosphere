@@ -13,7 +13,8 @@
     "lint:fix": "eslint src --ext .ts,.js --fix"
   },
   "dependencies": {
-    "@memosphere/shared": "workspace:*"
+    "@memosphere/shared": "workspace:*",
+    "dotenv": "^16.6.1"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

@@ -3,6 +3,7 @@
  * TODO: Implement actual service logic
  */
 
+import 'dotenv/config';
 import http from 'http';
 
 const PORT = process.env.PORT || 3001;

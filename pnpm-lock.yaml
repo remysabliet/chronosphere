@@ -291,6 +291,9 @@ importers:
       '@memosphere/shared':
         specifier: workspace:*
         version: link:../shared
+      dotenv:
+        specifier: ^16.6.1
+        version: 16.6.1
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -307,6 +310,9 @@ importers:
       '@memosphere/shared':
         specifier: workspace:*
         version: link:../shared
+      dotenv:
+        specifier: ^16.6.1
+        version: 16.6.1
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -339,6 +345,9 @@ importers:
       '@memosphere/shared':
         specifier: workspace:*
         version: link:../shared
+      dotenv:
+        specifier: ^16.6.1
+        version: 16.6.1
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -355,6 +364,9 @@ importers:
       '@memosphere/shared':
         specifier: workspace:*
         version: link:../shared
+      dotenv:
+        specifier: ^16.6.1
+        version: 16.6.1
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -368,6 +380,9 @@ importers:
 
   packages/shared:
     dependencies:
+      aws-jwt-verify:
+        specifier: ^4.0.1
+        version: 4.0.1
       zod:
         specifier: ^3.22.0
         version: 3.25.76
@@ -384,6 +399,9 @@ importers:
       '@memosphere/shared':
         specifier: workspace:*
         version: link:../shared
+      dotenv:
+        specifier: ^16.6.1
+        version: 16.6.1
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -2458,6 +2476,10 @@ packages:
     resolution: {integrity: sha512-wvUjBtSGN7+7SjNpq/9M2Tg350UZD3q62IFZLbRAR1bSMlCo1ZaeW+BJ+D090e4hIIZLBcTDWe4Mh4jvUDajzQ==}
     engines: {node: '>= 0.4'}
 
+  aws-jwt-verify@4.0.1:
+    resolution: {integrity: sha512-kzvi71eD3w/mCpYRUY7cz6DX4bfYihGdI2yV3FYQ2JuZZenqAqDPz0gWj0ew6vlAtdEVBNb7p+Dm2TAIxpVYMA==}
+    engines: {node: '>=14.0.0'}
+
   axe-core@4.11.0:
     resolution: {integrity: sha512-ilYanEU8vxxBexpJd8cWM4ElSQq4QctCLKih0TSfjIfCQTeyH/6zVrmIJfLPrKTKJRbiG+cfnZbQIjAlJmF1jQ==}
     engines: {node: '>=4'}
@@ -4118,6 +4140,7 @@ packages:
   recharts@2.15.4:
     resolution: {integrity: sha512-UT/q6fwS3c1dHbXv2uFgYJ9BMFHu3fwnd7AYZaEQhXuYQ4hgsxLvsUXzGdKeZrW5xopzDCvuA2N41WJ88I7zIw==}
     engines: {node: '>=14'}
+    deprecated: 1.x and 2.x branches are no longer active. Bump to Recharts v3 to receive latest features and bugfixes. See https://github.com/recharts/recharts/wiki/3.0-migration-guide
     peerDependencies:
       react: ^16.0.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
       react-dom: ^16.0.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
@@ -6739,6 +6762,8 @@ snapshots:
   available-typed-arrays@1.0.7:
     dependencies:
       possible-typed-array-names: 1.1.0
+
+  aws-jwt-verify@4.0.1: {}
 
   axe-core@4.11.0: {}
 

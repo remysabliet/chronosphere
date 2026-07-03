@@ -3,8 +3,14 @@ Learning Engine Service - Minimal Stub
 TODO: Implement actual BKT and IRT algorithms
 """
 
+import os
+from pathlib import Path
+
+from dotenv import load_dotenv
 from fastapi import FastAPI
 import uvicorn
+
+load_dotenv(Path(__file__).resolve().parent / ".env")
 
 app = FastAPI(
     title="Learning Engine Service",
@@ -27,5 +33,5 @@ async def root():
     }
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8002)
+    uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", 8002)))
 

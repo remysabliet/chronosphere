@@ -3,9 +3,15 @@ from typing import Annotated
 from fastapi import Depends
 
 from question_generation_service.db.session import SessionDep
+from question_generation_service.repositories.concept_progress_repository import (
+    ConceptProgressRepository,
+)
+from question_generation_service.repositories.exposure_repository import ExposureRepository
 from question_generation_service.repositories.learning_unit_repository import LearningUnitRepository
 from question_generation_service.repositories.thema_repository import ThemaRepository
+from question_generation_service.services.bkt_init_service import BktInitService
 from question_generation_service.services.concept_service import ConceptService
+from question_generation_service.services.exposure_service import ExposureService
 from question_generation_service.services.thema_service import ThemaService
 from question_generation_service.services.wizard_service import WizardService
 
@@ -24,11 +30,40 @@ def get_thema_repository(session: SessionDep) -> ThemaRepository:
     return ThemaRepository(session)
 
 
+def get_exposure_repository(session: SessionDep) -> ExposureRepository:
+    return ExposureRepository(session)
+
+
+def get_concept_progress_repository(session: SessionDep) -> ConceptProgressRepository:
+    return ConceptProgressRepository(session)
+
+
+def get_bkt_init_service(
+    repository: Annotated[ConceptProgressRepository, Depends(get_concept_progress_repository)],
+) -> BktInitService:
+    return BktInitService(repository)
+
+
 def get_thema_service(
     repository: Annotated[ThemaRepository, Depends(get_thema_repository)],
     concept_mapper: Annotated[ConceptService, Depends(get_concept_service)],
+    exposure_repository: Annotated[ExposureRepository, Depends(get_exposure_repository)],
+    bkt_init_service: Annotated[BktInitService, Depends(get_bkt_init_service)],
 ) -> ThemaService:
-    return ThemaService(repository, concept_mapper)
+    return ThemaService(repository, concept_mapper, exposure_repository, bkt_init_service)
+
+
+def get_exposure_service(
+    thema_repository: Annotated[ThemaRepository, Depends(get_thema_repository)],
+    exposure_repository: Annotated[ExposureRepository, Depends(get_exposure_repository)],
+    learning_unit_repository: Annotated[
+        LearningUnitRepository, Depends(get_learning_unit_repository)
+    ],
+    bkt_init_service: Annotated[BktInitService, Depends(get_bkt_init_service)],
+) -> ExposureService:
+    return ExposureService(
+        thema_repository, exposure_repository, learning_unit_repository, bkt_init_service
+    )
 
 
 def get_wizard_service() -> WizardService:
@@ -38,3 +73,4 @@ def get_wizard_service() -> WizardService:
 ThemaServiceDep = Annotated[ThemaService, Depends(get_thema_service)]
 ConceptServiceDep = Annotated[ConceptService, Depends(get_concept_service)]
 WizardServiceDep = Annotated[WizardService, Depends(get_wizard_service)]
+ExposureServiceDep = Annotated[ExposureService, Depends(get_exposure_service)]

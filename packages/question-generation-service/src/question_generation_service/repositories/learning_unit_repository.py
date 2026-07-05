@@ -1,6 +1,7 @@
 from typing import Protocol, TypedDict
 from uuid import UUID
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from question_generation_service.models.learning_unit import LearningUnit
@@ -35,6 +36,8 @@ class LearningUnitRepositoryProtocol(Protocol):
         concepts: list[ConceptInput],
     ) -> list[LearningUnitEntryProtocol]: ...
 
+    async def get_by_thema(self, thema: str) -> list[LearningUnitEntryProtocol]: ...
+
 
 class LearningUnitRepository:
     def __init__(self, session: AsyncSession):
@@ -61,3 +64,7 @@ class LearningUnitRepository:
         self.session.add_all(units)
         await self.session.commit()
         return units  # type: ignore[return-value]
+
+    async def get_by_thema(self, thema: str) -> list[LearningUnitEntryProtocol]:
+        result = await self.session.execute(select(LearningUnit).where(LearningUnit.thema == thema))
+        return list(result.scalars().all())  # type: ignore[return-value]

@@ -1,5 +1,5 @@
 import json
-from typing import Any, TypedDict
+from typing import Any, TypedDict, cast
 from uuid import UUID
 
 from question_generation_service.clients.mistral_client import chat_complete
@@ -13,8 +13,12 @@ from question_generation_service.prompts.thema_topic_extract import (
     PROMPT_1_CONFIG,
     PROMPT_1_SYSTEM,
 )
+from question_generation_service.repositories.exposure_repository import (
+    ExposureRepositoryProtocol,
+)
 from question_generation_service.repositories.thema_repository import ThemaRepositoryProtocol
 from question_generation_service.schemas.concept import ConceptMapRequest
+from question_generation_service.schemas.exposure import EXPOSURE_TO_P_L0, ExposureLevel
 from question_generation_service.schemas.thema import (
     AmbiguousThema,
     ConfirmRequest,
@@ -27,6 +31,7 @@ from question_generation_service.schemas.thema import (
     ThemaRequest,
     UnresolvedThema,
 )
+from question_generation_service.services.bkt_init_service import BktInitServiceProtocol
 from question_generation_service.services.concept_service import ConceptMapperProtocol
 
 EXTRACTED_TOPIC_MAX_LENGTH = 255
@@ -134,9 +139,17 @@ def _resolved_fields(candidate: _Candidate, alternates: list[ThemaCandidate]) ->
 
 
 class ThemaService:
-    def __init__(self, repository: ThemaRepositoryProtocol, concept_mapper: ConceptMapperProtocol):
+    def __init__(
+        self,
+        repository: ThemaRepositoryProtocol,
+        concept_mapper: ConceptMapperProtocol,
+        exposure_repository: ExposureRepositoryProtocol,
+        bkt_init_service: BktInitServiceProtocol,
+    ):
         self.repository = repository
         self.concept_mapper = concept_mapper
+        self.exposure_repository = exposure_repository
+        self.bkt_init_service = bkt_init_service
         self.settings = get_settings()
 
     def _decide(self, candidates: list[_Candidate], *, is_refine: bool) -> str:
@@ -248,7 +261,9 @@ class ThemaService:
 
         return result
 
-    async def confirm(self, extraction_id: UUID, request: ConfirmRequest) -> ResolvedThema:
+    async def confirm(
+        self, extraction_id: UUID, request: ConfirmRequest, user_id: UUID
+    ) -> ResolvedThema:
         entry = await self.repository.get(extraction_id)
         if entry is None or not entry.notes:
             raise NotFoundError(f"No extraction found for id {extraction_id}")
@@ -266,11 +281,27 @@ class ThemaService:
             request, candidates
         )
 
+        # Exposure is independent of concept mapping (Step 5 vs Step 6) and cheap
+        # (a DB read, not an AI call) — but it shares this request's AsyncSession
+        # with the concept mapper's repository, and one connection can't run two
+        # queries at once, so these must stay sequential rather than gathered.
+        exposure_entry = await self.exposure_repository.get(user_id, chosen["thema"])
+
         # Map concepts before flipping status to "confirmed" — if this fails, the
         # extraction stays retryable instead of ending up confirmed with no concepts.
-        await self.concept_mapper.map(
+        concept_response = await self.concept_mapper.map(
             ConceptMapRequest(thema=chosen["thema"], topics=chosen["topics"])
         )
+
+        exposure_required = exposure_entry is None
+        if exposure_entry is not None:
+            pairs = [
+                (concept.id, bloom_level)
+                for concept in concept_response.concepts
+                for bloom_level in concept.bloom_levels
+            ]
+            p_l0 = EXPOSURE_TO_P_L0[cast(ExposureLevel, exposure_entry.exposure_level)]
+            await self.bkt_init_service.initialize(user_id, pairs, p_l0)
 
         confirmed_payload: _NotesPayload = {
             "status": "confirmed",
@@ -296,6 +327,7 @@ class ThemaService:
             topics=chosen["topics"],
             confidence=confidence,
             confirmation=confirmation,
+            exposure_required=exposure_required,
         )
 
     def _pick(

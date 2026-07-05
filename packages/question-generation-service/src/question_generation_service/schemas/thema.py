@@ -38,6 +38,9 @@ class ResolvedThema(BaseModel):
     # Runner-up interpretations from the same sampling round, in case the winner
     # is wrong — lets the client offer a one-tap alternative before free text.
     alternates: list[ThemaCandidate] = Field(default_factory=list)
+    # True when no user_thema_exposure row exists yet for this thema — the client
+    # must ask "how familiar are you with this?" before BKT can be initialized.
+    exposure_required: bool = False
 
 
 class AmbiguousThema(BaseModel):

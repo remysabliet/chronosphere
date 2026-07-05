@@ -7,6 +7,7 @@ from question_generation_service.repositories.learning_unit_repository import Le
 from question_generation_service.repositories.thema_repository import ThemaRepository
 from question_generation_service.services.concept_service import ConceptService
 from question_generation_service.services.thema_service import ThemaService
+from question_generation_service.services.wizard_service import WizardService
 
 
 def get_learning_unit_repository(session: SessionDep) -> LearningUnitRepository:
@@ -30,5 +31,10 @@ def get_thema_service(
     return ThemaService(repository, concept_mapper)
 
 
+def get_wizard_service() -> WizardService:
+    return WizardService()
+
+
 ThemaServiceDep = Annotated[ThemaService, Depends(get_thema_service)]
 ConceptServiceDep = Annotated[ConceptService, Depends(get_concept_service)]
+WizardServiceDep = Annotated[WizardService, Depends(get_wizard_service)]

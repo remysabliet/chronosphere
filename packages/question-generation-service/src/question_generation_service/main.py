@@ -19,6 +19,7 @@ from question_generation_service.routers.concept_router import concept_router
 from question_generation_service.routers.moderation_router import moderation_router
 from question_generation_service.routers.questions_router import questions_router
 from question_generation_service.routers.thema_router import thema_router
+from question_generation_service.routers.wizard_router import wizard_router
 
 _STATUS_BY_EXCEPTION = {
     NotFoundError: 404,
@@ -58,6 +59,7 @@ async def health_check():
 app.include_router(concept_router)
 app.include_router(questions_router)
 app.include_router(thema_router)
+app.include_router(wizard_router)
 app.include_router(moderation_router)
 
 

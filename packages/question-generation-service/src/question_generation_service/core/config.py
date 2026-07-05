@@ -11,6 +11,8 @@ class Settings(BaseSettings):
     DATABASE_URL: str
     MISTRAL_API_KEY: str
     MISTRAL_MODEL: str = "mistral-large-latest"
+    # Cheap/fast model for lightweight NLU (e.g. quiz-length interpretation).
+    MISTRAL_FAST_MODEL: str = "mistral-small-latest"
     COGNITO_ISSUER: str
     COGNITO_CLIENT_ID: str
     DEBUG: bool = False

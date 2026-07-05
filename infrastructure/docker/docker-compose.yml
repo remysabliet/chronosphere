@@ -3,6 +3,12 @@
 # Single file for local development only
 # =============================================================================
 
+# Shared by every service that talks to Postgres/Redis inside the compose network —
+# merge with `<<: *db-env` instead of repeating these two lines per service.
+x-db-env: &db-env
+  DATABASE_URL: postgresql://memosphere:${POSTGRES_PASSWORD:-memosphere_secure_dev_2025!}@postgres:5432/memosphere_${ENVIRONMENT:-development}
+  REDIS_URL: redis://redis:6379
+
 services:
   # =============================================================================
   # Database Services
@@ -14,7 +20,7 @@ services:
     environment:
       POSTGRES_DB: memosphere_${ENVIRONMENT:-development}
       POSTGRES_USER: memosphere
-      POSTGRES_PASSWORD: memosphere_secure_dev_2025!
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-memosphere_secure_dev_2025!}
     ports:
       - '${POSTGRES_PORT:-5432}:5432'
     volumes:
@@ -37,8 +43,8 @@ services:
       dockerfile: packages/migration-service/Dockerfile
     container_name: memosphere-migration-service-${ENVIRONMENT:-development}
     environment:
+      <<: *db-env
       NODE_ENV: ${NODE_ENV:-development}
-      DATABASE_URL: postgresql://memosphere:memosphere_secure_dev_2025!@postgres:5432/memosphere_${ENVIRONMENT:-development}
     depends_on:
       postgres:
         condition: service_healthy
@@ -72,13 +78,10 @@ services:
       dockerfile: packages/user-management-service/Dockerfile
       target: base
     container_name: memosphere-user-management
+    env_file:
+      - ../../packages/user-management-service/.env
     environment:
-      NODE_ENV: development
-      PORT: 3001
-      DATABASE_URL: postgresql://memosphere:memosphere_secure_dev_2025!@postgres:5432/memosphere_${ENVIRONMENT:-development}
-      REDIS_URL: redis://redis:6379
-      JWT_SECRET: dev_jwt_secret_key_here
-      JWT_EXPIRES_IN: 24h
+      <<: *db-env
     ports:
       - '3001:3001'
     volumes:
@@ -105,11 +108,10 @@ services:
       dockerfile: packages/content-management-service/Dockerfile
       target: base
     container_name: memosphere-content-management
+    env_file:
+      - ../../packages/content-management-service/.env
     environment:
-      NODE_ENV: development
-      PORT: 3002
-      DATABASE_URL: postgresql://memosphere:memosphere_secure_dev_2025!@postgres:5432/memosphere_${ENVIRONMENT:-development}
-      REDIS_URL: redis://redis:6379
+      <<: *db-env
     ports:
       - '3002:3002'
     volumes:
@@ -136,11 +138,10 @@ services:
       dockerfile: packages/quiz-session-service/Dockerfile
       target: base
     container_name: memosphere-quiz-session
+    env_file:
+      - ../../packages/quiz-session-service/.env
     environment:
-      NODE_ENV: development
-      PORT: 3003
-      DATABASE_URL: postgresql://memosphere:memosphere_secure_dev_2025!@postgres:5432/memosphere_${ENVIRONMENT:-development}
-      REDIS_URL: redis://redis:6379
+      <<: *db-env
       USER_MANAGEMENT_URL: http://user-management-service:3001
       LEARNING_ENGINE_URL: http://learning-engine-service:8002
       QUESTION_GENERATION_URL: http://question-generation-service:8001
@@ -173,11 +174,10 @@ services:
       dockerfile: packages/analytics-service/Dockerfile
       target: base
     container_name: memosphere-analytics
+    env_file:
+      - ../../packages/analytics-service/.env
     environment:
-      NODE_ENV: development
-      PORT: 3004
-      DATABASE_URL: postgresql://memosphere:memosphere_secure_dev_2025!@postgres:5432/memosphere_${ENVIRONMENT:-development}
-      REDIS_URL: redis://redis:6379
+      <<: *db-env
     ports:
       - '3004:3004'
     volumes:
@@ -204,15 +204,10 @@ services:
       dockerfile: packages/notification-service/Dockerfile
       target: base
     container_name: memosphere-notification
+    env_file:
+      - ../../packages/notification-service/.env
     environment:
-      NODE_ENV: development
-      PORT: 3005
-      DATABASE_URL: postgresql://memosphere:memosphere_secure_dev_2025!@postgres:5432/memosphere_${ENVIRONMENT:-development}
-      REDIS_URL: redis://redis:6379
-      SMTP_HOST: smtp.gmail.com
-      SMTP_PORT: 587
-      SMTP_USER: dev_email@gmail.com
-      SMTP_PASS: dev_app_password
+      <<: *db-env
     ports:
       - '3005:3005'
     volumes:
@@ -242,15 +237,10 @@ services:
       context: ../../
       dockerfile: packages/question-generation-service/Dockerfile
     container_name: memosphere-question-generation
+    env_file:
+      - ../../packages/question-generation-service/src/question_generation_service/.env
     environment:
-      NODE_ENV: development
-      PORT: 8001
-      DATABASE_URL: postgresql://memosphere:memosphere_secure_dev_2025!@postgres:5432/memosphere_${ENVIRONMENT:-development}
-      REDIS_URL: redis://redis:6379
-      MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      COGNITO_ISSUER: ${COGNITO_ISSUER:-}
-      COGNITO_CLIENT_ID: ${COGNITO_CLIENT_ID:-}
+      <<: *db-env
     ports:
       - '8001:8001'
     depends_on:
@@ -272,15 +262,10 @@ services:
       context: ../../
       dockerfile: packages/learning-engine-service/Dockerfile
     container_name: memosphere-learning-engine
+    env_file:
+      - ../../packages/learning-engine-service/src/learning_engine_service/.env
     environment:
-      NODE_ENV: development
-      PORT: 8002
-      DATABASE_URL: postgresql://memosphere:memosphere_secure_dev_2025!@postgres:5432/memosphere_${ENVIRONMENT:-development}
-      REDIS_URL: redis://redis:6379
-      BKT_LEARNING_RATE: 0.1
-      BKT_MASTERY_THRESHOLD: 0.8
-      IRT_ABILITY_RANGE_MIN: -3.0
-      IRT_ABILITY_RANGE_MAX: 3.0
+      <<: *db-env
     ports:
       - '8002:8002'
     depends_on:
@@ -307,10 +292,10 @@ services:
       dockerfile: apps/web-app/Dockerfile
       target: base
     container_name: memosphere-web-app
+    env_file:
+      - ../../apps/web-app/.env.local
     environment:
-      NODE_ENV: development
-      NEXT_PUBLIC_APP_URL: http://localhost:3000
-      NEXT_PUBLIC_API_URL: http://localhost:80
+      NEXT_PUBLIC_QUESTION_GEN_URL: http://question-generation-service:8001
       WATCHPACK_POLLING: 'true'
     ports:
       - '3000:3000'

@@ -339,7 +339,13 @@
 **Process**:
 
 1. **Select Question Type** based on:
-   - Bloom level (see distribution above)
+   - Bloom level (canonical 6-level taxonomy, ascending cognitive demand — see distribution above):
+     1. Remembering
+     2. Understanding
+     3. Applying
+     4. Analyzing
+     5. Evaluating
+     6. Creating
    - User preferences
    - Mnemonic suitability
    - Prior question type history (avoid repetition)

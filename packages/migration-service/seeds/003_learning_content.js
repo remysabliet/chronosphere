@@ -70,9 +70,7 @@ export const seed = async function (knex) {
       id: '880e8400-e29b-41d4-a716-446655440001',
       concept_id: '770e8400-e29b-41d4-a716-446655440001',
       bloom_level: 'Remembering',
-      difficulty_b: 0.5,
-      discrimination_a: 1.2,
-      guessing_c: 0.25,
+      difficulty_tier: 'easy',
       question_type: '4-option MCQ',
       question_text: 'What is the primary goal of linear regression?',
       options: JSON.stringify([
@@ -96,9 +94,7 @@ export const seed = async function (knex) {
       id: '880e8400-e29b-41d4-a716-446655440002',
       concept_id: '770e8400-e29b-41d4-a716-446655440001',
       bloom_level: 'Applying',
-      difficulty_b: 1.2,
-      discrimination_a: 1.5,
-      guessing_c: 0.25,
+      difficulty_tier: 'medium',
       question_type: '4-option MCQ',
       question_text:
         'Given the equation y = 2x + 3, what would be the predicted value when x = 5?',

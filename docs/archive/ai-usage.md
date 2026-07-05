@@ -1,3 +1,5 @@
+> **Archived 2026-07-05**: this doc describes an abandoned plan to fine-tune BERT for question generation. The current architecture calls the Mistral API — see `docs/product/mvp.md` and `packages/question-generation-service`.
+
 Use NPL (Natural language processing) like BERT (Google).
 
 Fine-tuning a model does involve training it up to a certain point on a specific dataset, after which it retains what it has learned. However, the model doesn't continue to learn unless you explicitly continue the training process with new data, and it doesn't "forget" its training unless it's retrained with different data (a concept known as "catastrophic forgetting" in neural networks).

@@ -7,15 +7,12 @@ from fastapi import HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
 from jose.exceptions import JOSEError
 
-from memosphere_auth.cognito import CognitoTokenVerifier, _JWKS_CACHE_TTL_SECONDS
-
+from memosphere_auth.cognito import _JWKS_CACHE_TTL_SECONDS, CognitoTokenVerifier
 
 FAKE_ISSUER = "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_FAKE"
 FAKE_AUDIENCE = "fake-client-id"
 
-_FAKE_JWKS: dict[str, Any] = {
-    "keys": [{"kid": "key-1", "kty": "RSA", "n": "abc", "e": "AQAB"}]
-}
+_FAKE_JWKS: dict[str, Any] = {"keys": [{"kid": "key-1", "kty": "RSA", "n": "abc", "e": "AQAB"}]}
 _FAKE_CLAIMS: dict[str, Any] = {
     "sub": "user-123",
     "iss": FAKE_ISSUER,
@@ -96,7 +93,9 @@ class TestVerify:
         verifier._jwks = _FAKE_JWKS
         verifier._jwks_fetched_at = time.monotonic()
 
-        with patch("memosphere_auth.cognito.jwt.get_unverified_header", side_effect=JOSEError("bad")):
+        with patch(
+            "memosphere_auth.cognito.jwt.get_unverified_header", side_effect=JOSEError("bad")
+        ):
             with pytest.raises(HTTPException) as exc_info:
                 await verifier.verify("not.a.token")
 
@@ -109,7 +108,9 @@ class TestVerify:
         verifier._jwks = _FAKE_JWKS
         verifier._jwks_fetched_at = time.monotonic()
 
-        with patch("memosphere_auth.cognito.jwt.get_unverified_header", return_value={"kid": "unknown-kid"}):
+        with patch(
+            "memosphere_auth.cognito.jwt.get_unverified_header", return_value={"kid": "unknown-kid"}
+        ):
             with pytest.raises(HTTPException) as exc_info:
                 await verifier.verify("some.valid.header")
 
@@ -122,7 +123,9 @@ class TestVerify:
         verifier._jwks = _FAKE_JWKS
         verifier._jwks_fetched_at = time.monotonic()
 
-        with patch("memosphere_auth.cognito.jwt.get_unverified_header", return_value={"kid": "key-1"}):
+        with patch(
+            "memosphere_auth.cognito.jwt.get_unverified_header", return_value={"kid": "key-1"}
+        ):
             with patch("memosphere_auth.cognito.jwt.decode", side_effect=JOSEError("expired")):
                 with pytest.raises(HTTPException) as exc_info:
                     await verifier.verify("expired.jwt.token")
@@ -136,12 +139,31 @@ class TestVerify:
         verifier._jwks = _FAKE_JWKS
         verifier._jwks_fetched_at = time.monotonic()
 
-        with patch("memosphere_auth.cognito.jwt.get_unverified_header", return_value={"kid": "key-1"}):
+        with patch(
+            "memosphere_auth.cognito.jwt.get_unverified_header", return_value={"kid": "key-1"}
+        ):
             with patch("memosphere_auth.cognito.jwt.decode", return_value=_FAKE_CLAIMS):
                 result = await verifier.verify("valid.jwt.token")
 
         assert result.sub == "user-123"
         assert result.email == "user@example.com"
+
+    @pytest.mark.asyncio
+    async def test_non_id_token_use_raises_401(self):
+        verifier = _verifier()
+        verifier._jwks = _FAKE_JWKS
+        verifier._jwks_fetched_at = time.monotonic()
+        access_token_claims = {**_FAKE_CLAIMS, "token_use": "access"}
+
+        with patch(
+            "memosphere_auth.cognito.jwt.get_unverified_header", return_value={"kid": "key-1"}
+        ):
+            with patch("memosphere_auth.cognito.jwt.decode", return_value=access_token_claims):
+                with pytest.raises(HTTPException) as exc_info:
+                    await verifier.verify("access.jwt.token")
+
+        assert exc_info.value.status_code == 401
+        assert "Invalid token" in exc_info.value.detail
 
 
 class TestCall:
@@ -159,7 +181,9 @@ class TestCall:
         verifier._jwks = _FAKE_JWKS
         verifier._jwks_fetched_at = time.monotonic()
 
-        with patch("memosphere_auth.cognito.jwt.get_unverified_header", return_value={"kid": "key-1"}):
+        with patch(
+            "memosphere_auth.cognito.jwt.get_unverified_header", return_value={"kid": "key-1"}
+        ):
             with patch("memosphere_auth.cognito.jwt.decode", return_value=_FAKE_CLAIMS):
                 result = await verifier(credentials=_bearer("valid.token"))
 

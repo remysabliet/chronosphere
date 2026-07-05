@@ -92,6 +92,12 @@ class CognitoTokenVerifier:
                 status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token"
             ) from exc
 
+        # Signature/audience checks alone don't rule out an access token being
+        # passed off as an ID token — Cognito access tokens omit `aud` so they'd
+        # already fail above, but AWS docs recommend asserting this explicitly.
+        if raw_claims.get("token_use") != "id":
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+
         return CognitoClaims.model_validate(raw_claims)
 
     async def __call__(

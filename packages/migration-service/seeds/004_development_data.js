@@ -117,6 +117,7 @@ export const seed = async function (knex) {
       user_id: '660e8400-e29b-41d4-a716-446655440001',
       concept_id: '770e8400-e29b-41d4-a716-446655440001',
       bloom_level: 'Remembering',
+      p_ln: 0.96,
       first_attempt: knex.fn.now(),
       last_attempt: knex.fn.now(),
       attempt_count: 3,

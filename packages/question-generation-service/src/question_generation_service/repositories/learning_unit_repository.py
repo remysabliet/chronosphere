@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from typing import Protocol, TypedDict
 from uuid import UUID
 
@@ -34,9 +35,9 @@ class LearningUnitRepositoryProtocol(Protocol):
         self,
         thema: str,
         concepts: list[ConceptInput],
-    ) -> list[LearningUnitEntryProtocol]: ...
+    ) -> Sequence[LearningUnitEntryProtocol]: ...
 
-    async def get_by_thema(self, thema: str) -> list[LearningUnitEntryProtocol]: ...
+    async def get_by_thema(self, thema: str) -> Sequence[LearningUnitEntryProtocol]: ...
 
 
 class LearningUnitRepository:

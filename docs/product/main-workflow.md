@@ -190,14 +190,14 @@ Initialize BKT parameters per concept in code — no prompt involved:
 
 ## 🔹 Generation Pipeline (generate ahead, serve instantly)
 
-Questions are personal to each user and generated ahead of need — never with a live LLM call in the serve path:
+Questions are generated ahead of need into a **shared pool per concept–Bloom–difficulty bucket** — never with a live LLM call in the serve path. The `questions` table has no `user_id` / `session_id` column: generation is anonymous and shared across every learner who reaches that bucket. Personalization happens at **selection**, not generation — the serving step picks a bucket-matching question this user hasn't already answered (checked against `user_responses`):
 
-- **Bulk generation**: questions are generated in small batches (~5) per concept–difficulty bucket, one LLM call per batch — prompt tokens amortize across the batch. Selection stays per-answer (adaptive); only generation is batched
-- **At session start** (during the session-init screen, ≤2s budget): generate the first batches for the session's concepts in the background
-- **While the user answers question N** (20–60s window): top up the buckets the user could land in next (Remediate / Practice / Advance)
+- **Bulk generation**: questions are generated in small batches (~5) per concept–difficulty bucket, one LLM call per batch — prompt tokens amortize across the batch, and the batch is reused by every learner who lands on that bucket. Selection stays per-answer and per-user (adaptive); only generation is batched and shared
+- **At session start** (during the session-init screen, ≤2s budget): generate the first batches for the session's concepts in the background, if a bucket's pool is running low
+- **While the user answers question N** (20–60s window): top up the buckets the user could land in next (Remediate / Practice / Advance), if their pool is running low
 - **Top-ups are triggered by answering, never by a timer** — an idle or abandoned session generates nothing and costs nothing
-- **Serving** = reading an already-generated question from the user's buffer in the `questions` table (<200ms, indexed read)
-- **Buffer empty** (user faster than generator): fall back to a live LLM call with a "preparing your question…" state — the exception, not the norm
+- **Serving** = reading an already-generated, not-yet-answered-by-this-user question from the shared pool in the `questions` table (<200ms, indexed read)
+- **Pool exhausted for this user** (every matching question already answered, or the generator hasn't caught up): fall back to a live LLM call with a "preparing your question…" state — the exception, not the norm
 
 ### Session length & ending
 

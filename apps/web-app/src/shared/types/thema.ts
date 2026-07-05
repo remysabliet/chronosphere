@@ -30,10 +30,24 @@ export interface UnresolvedThema {
   extraction_id: string;
 }
 
+export type NonTopicKind =
+  | 'greeting_or_chitchat'
+  | 'meta_question'
+  | 'unintelligible';
+
+export interface NonTopicInput {
+  status: 'non_topic';
+  extraction_id: string;
+  input_kind: NonTopicKind;
+  /** In-character wizard reply from the model; may be empty. */
+  reply: string;
+}
+
 export type ThemaExtractionResult =
   | ResolvedThema
   | AmbiguousThema
-  | UnresolvedThema;
+  | UnresolvedThema
+  | NonTopicInput;
 
 export interface ThemaRequest {
   raw_user_input: string;
@@ -46,4 +60,12 @@ export interface RefineRequest {
 
 export interface ConfirmRequest {
   chosen_rank?: number;
+}
+
+export interface QuizLengthInterpretation {
+  minutes: number | null;
+  question_count: number | null;
+  unlimited: boolean;
+  /** In-character wizard sentence; non-empty only when no size could be read. */
+  reply: string;
 }

@@ -3,6 +3,7 @@
 import { auth } from '@/lib/auth';
 import type {
   ConfirmRequest,
+  QuizLengthInterpretation,
   RefineRequest,
   ResolvedThema,
   ThemaExtractionResult,
@@ -56,4 +57,12 @@ export async function confirmThemaAction(
   body: ConfirmRequest
 ): Promise<ResolvedThema> {
   return postJSON(`/v1/thema/${extractionId}/confirm`, body);
+}
+
+export async function interpretQuizLengthAction(
+  rawUserInput: string
+): Promise<QuizLengthInterpretation> {
+  return postJSON('/v1/wizard/quiz-length/interpret', {
+    raw_user_input: rawUserInput,
+  });
 }

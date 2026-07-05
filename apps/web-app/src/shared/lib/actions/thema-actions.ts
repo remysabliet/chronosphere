@@ -3,6 +3,8 @@
 import { auth } from '@/lib/auth';
 import type {
   ConfirmRequest,
+  ExposureRequest,
+  ExposureResult,
   QuizLengthInterpretation,
   RefineRequest,
   ResolvedThema,
@@ -57,6 +59,13 @@ export async function confirmThemaAction(
   body: ConfirmRequest
 ): Promise<ResolvedThema> {
   return postJSON(`/v1/thema/${extractionId}/confirm`, body);
+}
+
+export async function submitExposureAction(
+  extractionId: string,
+  body: ExposureRequest
+): Promise<ExposureResult> {
+  return postJSON(`/v1/thema/${extractionId}/exposure`, body);
 }
 
 export async function interpretQuizLengthAction(

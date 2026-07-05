@@ -19,6 +19,7 @@ import {
   extractThemaAction,
   interpretQuizLengthAction,
   refineThemaAction,
+  submitExposureAction,
 } from '@/lib/actions/thema-actions';
 import { ROUTES } from '@/lib/constants';
 import { isSessionExpiredError, toFriendlyErrorMessage } from '@/lib/errors';
@@ -26,6 +27,7 @@ import { cn } from '@/lib/utils';
 import { SessionExpiredDialog } from '@/shared/components/auth/session-expired-dialog';
 import { WizardAvatar } from '@/shared/components/wizard/wizard-avatar';
 import type {
+  ExposureLevel,
   NonTopicKind,
   ResolvedThema,
   ThemaExtractionResult,
@@ -51,9 +53,24 @@ type ChatMessage =
       sourceText: string;
     }
   | { id: string; role: 'assistant'; kind: 'confirmed'; result: ResolvedThema }
+  | {
+      id: string;
+      role: 'assistant';
+      kind: 'exposure_prompt';
+      extractionId: string;
+    }
   | { id: string; role: 'assistant'; kind: 'quiz_length_prompt' }
   | { id: string; role: 'assistant'; kind: 'wizard_text'; text: string }
   | { id: string; role: 'user'; kind: 'text'; text: string };
+
+// Friendlier phrasing of the Step 5 exposure scale (Unseen/Recognized/Practiced/
+// Mastered) that seeds BKT's P(L0) — see main-workflow.md Step 5 & 7.
+const EXPOSURE_OPTIONS: { level: ExposureLevel; label: string }[] = [
+  { level: 'Unseen', label: 'Never heard of it' },
+  { level: 'Recognized', label: 'Heard of it, never studied' },
+  { level: 'Practiced', label: 'Studied it before' },
+  { level: 'Mastered', label: 'Know it well' },
+];
 
 type QuizLength =
   | { mode: 'time'; minutes: number }
@@ -205,6 +222,36 @@ export default function QuizWizardPage() {
       setPendingExtractionId(result.extraction_id);
       // Held back: the completion bubble only shows once sizing is settled too.
       setConfirmedResult(result);
+      // Exposure (Step 5) gates BKT init (Step 7) — ask first when it's not on
+      // file yet; otherwise go straight to sizing, same as before.
+      setMessages(prev => [
+        ...prev,
+        result.exposure_required
+          ? {
+              id: newId(),
+              role: 'assistant',
+              kind: 'exposure_prompt',
+              extractionId: result.extraction_id,
+            }
+          : { id: newId(), role: 'assistant', kind: 'quiz_length_prompt' },
+      ]);
+    },
+    onError: onMutationError,
+  });
+
+  const exposureMutation = useMutation({
+    mutationFn: ({
+      extractionId,
+      exposureLevel,
+    }: {
+      extractionId: string;
+      exposureLevel: ExposureLevel;
+    }) => submitExposureAction(extractionId, { exposure_level: exposureLevel }),
+    onSuccess: () => {
+      setMessages(prev => [
+        ...prev,
+        { id: newId(), role: 'assistant', kind: 'quiz_length_prompt' },
+      ]);
     },
     onError: onMutationError,
   });
@@ -272,9 +319,13 @@ export default function QuizWizardPage() {
   const isThinking =
     extractMutation.isPending ||
     refineMutation.isPending ||
-    lengthMutation.isPending;
+    lengthMutation.isPending ||
+    exposureMutation.isPending;
   const lastMessage = messages[messages.length - 1];
   const justConfirmed = lastMessage?.kind === 'confirmed';
+  // Exposure is answered with buttons only (no LLM parse) — block free text
+  // until the learner picks one, mirroring the quiz-length gate below.
+  const awaitingExposure = lastMessage?.kind === 'exposure_prompt';
 
   const currentStepIndex = !pendingExtractionId
     ? 0
@@ -312,7 +363,7 @@ export default function QuizWizardPage() {
 
   function handleSend() {
     const text = inputValue.trim();
-    if (text.length < 2) return;
+    if (text.length < 2 || awaitingExposure) return;
 
     setMessages(prev => [
       ...prev,
@@ -339,11 +390,16 @@ export default function QuizWizardPage() {
 
   function handleConfirm(extractionId: string, chosenRank?: number) {
     setConfirmClicked(true);
+    confirmMutation.mutate({ extractionId, chosenRank });
+  }
+
+  function handleSelectExposure(extractionId: string, level: ExposureLevel) {
+    const label = EXPOSURE_OPTIONS.find(o => o.level === level)?.label ?? level;
     setMessages(prev => [
       ...prev,
-      { id: newId(), role: 'assistant', kind: 'quiz_length_prompt' },
+      { id: newId(), role: 'user', kind: 'text', text: label },
     ]);
-    confirmMutation.mutate({ extractionId, chosenRank });
+    exposureMutation.mutate({ extractionId, exposureLevel: level });
   }
 
   function handleSelectQuizLength(length: QuizLength) {
@@ -360,7 +416,9 @@ export default function QuizWizardPage() {
   }
 
   let placeholder = 'What do you want to learn?';
-  if (confirmClicked && !quizLength) {
+  if (awaitingExposure) {
+    placeholder = 'Pick one above';
+  } else if (confirmClicked && !quizLength) {
     placeholder = 'e.g. "15 minutes", "10 questions", or "no limit"';
   } else if (pendingExtractionId) {
     placeholder = justConfirmed
@@ -392,6 +450,8 @@ export default function QuizWizardPage() {
                 onConfirm={handleConfirm}
                 quizLength={quizLength}
                 onSelectQuizLength={handleSelectQuizLength}
+                isSubmittingExposure={exposureMutation.isPending}
+                onSelectExposure={handleSelectExposure}
               />
             ))}
             {isThinking && <ThinkingBubble />}
@@ -410,14 +470,16 @@ export default function QuizWizardPage() {
               onChange={e => setInputValue(e.target.value)}
               aria-label='Message'
               placeholder={placeholder}
-              disabled={isThinking}
+              disabled={isThinking || awaitingExposure}
               className='rounded-full border-none bg-transparent shadow-none focus-visible:ring-0'
             />
             <Button
               type='submit'
               size='icon'
               className='shrink-0 rounded-full'
-              disabled={isThinking || inputValue.trim().length < 2}
+              disabled={
+                isThinking || awaitingExposure || inputValue.trim().length < 2
+              }
             >
               <Send className='size-4' />
             </Button>
@@ -645,12 +707,16 @@ function MessageBubble({
   onConfirm,
   quizLength,
   onSelectQuizLength,
+  isSubmittingExposure,
+  onSelectExposure,
 }: {
   message: ChatMessage;
   isConfirming: boolean;
   onConfirm: (extractionId: string, chosenRank?: number) => void;
   quizLength?: QuizLength;
   onSelectQuizLength: (length: QuizLength) => void;
+  isSubmittingExposure: boolean;
+  onSelectExposure: (extractionId: string, level: ExposureLevel) => void;
 }) {
   if (message.role === 'user') {
     return (
@@ -689,6 +755,28 @@ function MessageBubble({
         <Button asChild size='sm'>
           <Link href={ROUTES.DASHBOARD}>Back to dashboard</Link>
         </Button>
+      </AssistantBubble>
+    );
+  }
+
+  if (message.kind === 'exposure_prompt') {
+    return (
+      <AssistantBubble>
+        <p>How familiar are you with this already?</p>
+        <div className='flex flex-wrap gap-1.5'>
+          {EXPOSURE_OPTIONS.map(({ level, label }) => (
+            <Button
+              key={level}
+              type='button'
+              size='sm'
+              variant='outline'
+              disabled={isSubmittingExposure}
+              onClick={() => onSelectExposure(message.extractionId, level)}
+            >
+              {label}
+            </Button>
+          ))}
+        </div>
       </AssistantBubble>
     );
   }

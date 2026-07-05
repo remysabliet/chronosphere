@@ -17,6 +17,8 @@ export interface ResolvedThema {
   confidence: number;
   confirmation: string;
   alternates: ThemaCandidate[];
+  /** True when no prior exposure is on file — the wizard must ask before BKT can seed. */
+  exposure_required: boolean;
 }
 
 export interface AmbiguousThema {
@@ -68,4 +70,17 @@ export interface QuizLengthInterpretation {
   unlimited: boolean;
   /** In-character wizard sentence; non-empty only when no size could be read. */
   reply: string;
+}
+
+export type ExposureLevel = 'Unseen' | 'Recognized' | 'Practiced' | 'Mastered';
+
+export interface ExposureRequest {
+  exposure_level: ExposureLevel;
+}
+
+export interface ExposureResult {
+  thema: string;
+  exposure_level: ExposureLevel;
+  p_l0: number;
+  concepts_initialized: number;
 }

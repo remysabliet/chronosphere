@@ -300,14 +300,12 @@ function MessageBubble({
     return (
       <AssistantBubble>
         <p>
-          Great — you&apos;ll be quizzed on{' '}
+          Locked in — you&apos;ll be quizzed on{' '}
           <strong>{message.result.thema}</strong>.
         </p>
-        <p className='text-muted-foreground'>{message.result.confirmation}</p>
-        <TopicChips topics={message.result.topics} />
         <p className='text-xs text-muted-foreground'>
-          Happy with these topics, or want something else covered? Tell me below
-          — or head to your dashboard when you&apos;re ready.
+          Want something else covered? Tell me below — or head to your dashboard
+          when you&apos;re ready.
         </p>
         <Button asChild size='sm'>
           <Link href={ROUTES.DASHBOARD}>Back to dashboard</Link>

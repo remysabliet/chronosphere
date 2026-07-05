@@ -3,6 +3,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends
 
 from question_generation_service.dependencies.auth import current_user_dependency
+from question_generation_service.dependencies.rate_limit import ai_rate_limiter
 from question_generation_service.dependencies.services import ThemaServiceDep
 from question_generation_service.schemas.thema import (
     ConfirmRequest,
@@ -15,7 +16,7 @@ from question_generation_service.schemas.thema import (
 thema_router = APIRouter(
     prefix="/v1/thema",
     tags=["Thema & Topics"],
-    dependencies=[Depends(current_user_dependency)],
+    dependencies=[Depends(current_user_dependency), Depends(ai_rate_limiter)],
 )
 
 

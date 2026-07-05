@@ -1,8 +1,8 @@
-from uuid import uuid4
 from unittest.mock import AsyncMock
+from uuid import uuid4
 
-import pytest
-
+from question_generation_service.dependencies.rate_limit import RateLimiter, ai_rate_limiter
+from question_generation_service.main import app
 from question_generation_service.schemas.thema import (
     AmbiguousThema,
     ResolvedThema,
@@ -111,3 +111,16 @@ def test_router_requires_auth(anon_client):
     """No auth override — bearer token is missing → 403 or 401."""
     response = anon_client.post("/v1/thema/extract", json={"raw_user_input": "photosynthesis"})
     assert response.status_code in (401, 403)
+
+
+def test_extract_rate_limited_after_threshold(client, mock_thema_service):
+    mock_thema_service.extract = AsyncMock(return_value=_resolved())
+    app.dependency_overrides[ai_rate_limiter] = RateLimiter(max_requests=1, window_seconds=60)
+    try:
+        first = client.post("/v1/thema/extract", json={"raw_user_input": "how plants make food"})
+        second = client.post("/v1/thema/extract", json={"raw_user_input": "how plants make food"})
+    finally:
+        del app.dependency_overrides[ai_rate_limiter]
+
+    assert first.status_code == 200
+    assert second.status_code == 429

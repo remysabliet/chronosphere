@@ -3,10 +3,13 @@ import os
 # Must be set before any service module is imported (they call get_settings() at module level).
 os.environ.setdefault("DATABASE_URL", "postgresql://test:test@localhost:5432/test")
 os.environ.setdefault("MISTRAL_API_KEY", "test-key")
-os.environ.setdefault("COGNITO_ISSUER", "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_test")
+os.environ.setdefault(
+    "COGNITO_ISSUER", "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_test"
+)
 os.environ.setdefault("COGNITO_CLIENT_ID", "test-client-id")
 
-from typing import Any, AsyncGenerator
+from collections.abc import AsyncGenerator
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -16,17 +19,26 @@ from question_generation_service.core.config import get_settings
 
 get_settings.cache_clear()
 
-from question_generation_service.dependencies.auth import current_user_dependency
-from question_generation_service.dependencies.services import get_thema_service
 from question_generation_service.db.session import get_session
+from question_generation_service.dependencies.auth import current_user_dependency
+from question_generation_service.dependencies.rate_limit import ai_rate_limiter
+from question_generation_service.dependencies.services import get_thema_service
 from question_generation_service.main import app
 from question_generation_service.services.thema_service import ThemaService
 
 _FAKE_USER: dict[str, Any] = {"sub": "test-user-id", "email": "test@example.com"}
 
 
-async def _fake_session() -> AsyncGenerator[MagicMock, None]:
+async def _fake_session() -> AsyncGenerator[MagicMock]:
     yield MagicMock()
+
+
+@pytest.fixture(autouse=True)
+def _reset_rate_limiter() -> None:
+    """The AI-endpoint rate limiter is a process-wide singleton — clear its
+    in-memory counters between tests so one test's requests can't trip
+    another's limit."""
+    ai_rate_limiter._windows.clear()
 
 
 @pytest.fixture(scope="session")

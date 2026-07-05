@@ -8,10 +8,12 @@ from question_generation_service.repositories.concept_progress_repository import
 )
 from question_generation_service.repositories.exposure_repository import ExposureRepository
 from question_generation_service.repositories.learning_unit_repository import LearningUnitRepository
+from question_generation_service.repositories.question_repository import QuestionRepository
 from question_generation_service.repositories.thema_repository import ThemaRepository
 from question_generation_service.services.bkt_init_service import BktInitService
 from question_generation_service.services.concept_service import ConceptService
 from question_generation_service.services.exposure_service import ExposureService
+from question_generation_service.services.question_service import QuestionService
 from question_generation_service.services.thema_service import ThemaService
 from question_generation_service.services.wizard_service import WizardService
 
@@ -70,7 +72,18 @@ def get_wizard_service() -> WizardService:
     return WizardService()
 
 
+def get_question_repository(session: SessionDep) -> QuestionRepository:
+    return QuestionRepository(session)
+
+
+def get_question_service(
+    repository: Annotated[QuestionRepository, Depends(get_question_repository)],
+) -> QuestionService:
+    return QuestionService(repository)
+
+
 ThemaServiceDep = Annotated[ThemaService, Depends(get_thema_service)]
 ConceptServiceDep = Annotated[ConceptService, Depends(get_concept_service)]
 WizardServiceDep = Annotated[WizardService, Depends(get_wizard_service)]
 ExposureServiceDep = Annotated[ExposureService, Depends(get_exposure_service)]
+QuestionServiceDep = Annotated[QuestionService, Depends(get_question_service)]

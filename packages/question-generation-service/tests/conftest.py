@@ -24,10 +24,12 @@ from question_generation_service.dependencies.auth import current_user_dependenc
 from question_generation_service.dependencies.rate_limit import ai_rate_limiter
 from question_generation_service.dependencies.services import (
     get_exposure_service,
+    get_question_service,
     get_thema_service,
 )
 from question_generation_service.main import app
 from question_generation_service.services.exposure_service import ExposureService
+from question_generation_service.services.question_service import QuestionService
 from question_generation_service.services.thema_service import ThemaService
 
 # A real UUID, since routers now parse `sub` with UUID(...) to thread user_id through.
@@ -73,12 +75,24 @@ def mock_exposure_service() -> MagicMock:
 
 
 @pytest.fixture
-def client(mock_thema_service: MagicMock, mock_exposure_service: MagicMock):
+def mock_question_service() -> MagicMock:
+    svc = MagicMock(spec=QuestionService)
+    svc.generate_batch = AsyncMock()
+    return svc
+
+
+@pytest.fixture
+def client(
+    mock_thema_service: MagicMock,
+    mock_exposure_service: MagicMock,
+    mock_question_service: MagicMock,
+):
     """TestClient with auth + DB + service fully overridden."""
     app.dependency_overrides[current_user_dependency] = lambda: _FAKE_USER
     app.dependency_overrides[get_session] = _fake_session
     app.dependency_overrides[get_thema_service] = lambda: mock_thema_service
     app.dependency_overrides[get_exposure_service] = lambda: mock_exposure_service
+    app.dependency_overrides[get_question_service] = lambda: mock_question_service
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()

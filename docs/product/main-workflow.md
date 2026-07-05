@@ -192,10 +192,19 @@ Initialize BKT parameters per concept in code — no prompt involved:
 
 Questions are personal to each user and generated ahead of need — never with a live LLM call in the serve path:
 
-- **At session start** (during the session-init screen, ≤2s budget): generate the first questions for the session's concepts in the background
-- **While the user answers question N** (20–60s window): generate candidate next questions for each band the user could land in (Remediate / Practice / Advance)
+- **Bulk generation**: questions are generated in small batches (~5) per concept–difficulty bucket, one LLM call per batch — prompt tokens amortize across the batch. Selection stays per-answer (adaptive); only generation is batched
+- **At session start** (during the session-init screen, ≤2s budget): generate the first batches for the session's concepts in the background
+- **While the user answers question N** (20–60s window): top up the buckets the user could land in next (Remediate / Practice / Advance)
+- **Top-ups are triggered by answering, never by a timer** — an idle or abandoned session generates nothing and costs nothing
 - **Serving** = reading an already-generated question from the user's buffer in the `questions` table (<200ms, indexed read)
 - **Buffer empty** (user faster than generator): fall back to a live LLM call with a "preparing your question…" state — the exception, not the norm
+
+### Session length & ending
+
+- Quiz length may be **time**, **question count**, **both** (ends at whichever hits first), or **no limit**
+- An **"End quiz"** control is available in every session at any moment → session closes gracefully and shows results
+- **No limit** = open-ended session: generation continues only as the learner keeps answering; the natural endpoint is mastery of the session's concepts
+- After ~10 minutes of inactivity the session auto-closes and saves results, shown on return
 
 ## 🔹 Step 8A: Question Validation
 

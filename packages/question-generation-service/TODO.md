@@ -59,22 +59,36 @@ The service is responsible for:
     ```
 
 - **POST `/v1/concepts/map`** (Prompt 2)
-  - **Purpose**: Produce atomic concepts and allowed Bloom levels per concept.
+  - **Purpose**: Produce atomic concepts, Bloom levels, and quiz-planning metadata
+    (`learning_goal`, `estimated_time_minutes`, `complexity_level`) for a thema's topics,
+    and persist them to `learning_units`.
+  - **Trigger**: called **internally by `ThemaService.confirm()`**, not by the client —
+    once a learner confirms their thema+topics, the backend maps concepts for all
+    topics in one call before marking the extraction confirmed. If concept mapping
+    fails, the extraction is left in its pre-confirm state so the client can retry
+    `confirm()` rather than ending up "confirmed" with no concepts. The HTTP endpoint
+    still exists for standalone/admin use (e.g. re-mapping, moderation tooling).
   - **Request body**:
     ```json
     {
       "thema": "string",
-      "topic": "string",
-      "language": "string (optional)"
+      "topics": ["string"],
+      "learner_context": { "profession": "string", "education_level": "string" } // optional
     }
     ```
   - **Response body**:
     ```json
     {
+      "thema": "string",
       "concepts": [
         {
+          "id": "uuid",
+          "topic": "string",
           "concept": "string",
-          "bloom_levels": ["Remember", "Understand", "..."]
+          "learning_goal": "string",
+          "bloom_levels": ["Remembering", "Understanding", "..."],
+          "estimated_time_minutes": 15,
+          "complexity_level": "Low" | "Medium" | "High"
         }
       ]
     }
@@ -217,8 +231,10 @@ The service is responsible for:
 
 1. **Basic service + health**
    - Implement `FastAPI` app + `/health`.
-2. **Thema & concept endpoints**
-   - `/v1/thema/extract`, `/v1/concepts/map` with simple, mock logic first.
+2. **Thema & concept endpoints** — DONE
+   - `/v1/thema/extract` (+ `refine`, `confirm`) and `/v1/concepts/map`.
+   - `ThemaService.confirm()` calls concept mapping internally once a learner
+     confirms their thema/topics — see §2.2 for the trigger/failure semantics.
 3. **Question generation (stubbed)**
    - `/v1/questions/generate` returning mocked questions with correct schema.
 4. **Validation logic + logging**

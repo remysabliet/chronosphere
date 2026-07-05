@@ -9,24 +9,25 @@ from question_generation_service.services.concept_service import ConceptService
 from question_generation_service.services.thema_service import ThemaService
 
 
-def get_thema_repository(session: SessionDep) -> ThemaRepository:
-    return ThemaRepository(session)
-
-
-def get_thema_service(
-    repository: Annotated[ThemaRepository, Depends(get_thema_repository)]
-) -> ThemaService:
-    return ThemaService(repository)
-
-
 def get_learning_unit_repository(session: SessionDep) -> LearningUnitRepository:
     return LearningUnitRepository(session)
 
 
 def get_concept_service(
-    repository: Annotated[LearningUnitRepository, Depends(get_learning_unit_repository)]
+    repository: Annotated[LearningUnitRepository, Depends(get_learning_unit_repository)],
 ) -> ConceptService:
     return ConceptService(repository)
+
+
+def get_thema_repository(session: SessionDep) -> ThemaRepository:
+    return ThemaRepository(session)
+
+
+def get_thema_service(
+    repository: Annotated[ThemaRepository, Depends(get_thema_repository)],
+    concept_mapper: Annotated[ConceptService, Depends(get_concept_service)],
+) -> ThemaService:
+    return ThemaService(repository, concept_mapper)
 
 
 ThemaServiceDep = Annotated[ThemaService, Depends(get_thema_service)]

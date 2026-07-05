@@ -1,4 +1,4 @@
-from typing import TypedDict, cast
+from typing import Protocol, TypedDict, cast
 
 from question_generation_service.clients.mistral_client import chat_complete
 from question_generation_service.prompts.concept_map import PROMPT_2_CONFIG, PROMPT_2_SYSTEM
@@ -14,6 +14,10 @@ from question_generation_service.schemas.concept import (
     ConceptMapResponse,
     StoredConceptItem,
 )
+
+
+class ConceptMapperProtocol(Protocol):
+    async def map(self, request: ConceptMapRequest) -> ConceptMapResponse: ...
 
 
 class _ConceptRaw(TypedDict):
@@ -82,6 +86,6 @@ class ConceptService:
             thema=request.thema,
             concepts=[
                 StoredConceptItem(id=entry.id, **item.model_dump())
-                for entry, item in zip(stored, items)
+                for entry, item in zip(stored, items, strict=True)
             ],
         )

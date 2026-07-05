@@ -8,6 +8,7 @@ from question_generation_service.core.exceptions import ConflictError, NotFoundE
 from question_generation_service.repositories.thema_repository import (
     ThemaEntryProtocol,
 )
+from question_generation_service.schemas.concept import ConceptMapRequest, ConceptMapResponse
 from question_generation_service.schemas.thema import (
     AmbiguousThema,
     ConfirmRequest,
@@ -19,14 +20,25 @@ from question_generation_service.schemas.thema import (
 from question_generation_service.services.thema_service import ThemaService
 
 
-def _sample(thema: str, domain: str, topics: list[str]) -> dict[str, object]:
+def _alt(thema: str, domain: str, topics: list[str], confidence: float) -> dict[str, object]:
     return {
         "thema": thema,
         "domain": domain,
         "disambiguator": f"{thema} sense",
         "confirmation": f"You'll be quizzed on {thema}.",
         "topics": topics,
+        "confidence": confidence,
     }
+
+
+def _response(
+    thema: str,
+    domain: str,
+    topics: list[str],
+    confidence: float,
+    alternates: list[dict[str, object]] | None = None,
+) -> dict[str, object]:
+    return {**_alt(thema, domain, topics, confidence), "alternates": alternates or []}
 
 
 class _SavedKwargs(TypedDict):
@@ -98,40 +110,65 @@ class FakeThemaRepository:
         return entry
 
 
-def _patch_samples(monkeypatch, samples):
-    async def fake(system_msg, user_msg, config):
-        return samples
+class FakeConceptMapper:
+    def __init__(self, *, fail: bool = False) -> None:
+        self.fail = fail
+        self.calls: list[ConceptMapRequest] = []
 
-    monkeypatch.setattr(
-        "question_generation_service.services.thema_service.chat_complete_samples", fake
-    )
+    async def map(self, request: ConceptMapRequest) -> ConceptMapResponse:
+        if self.fail:
+            raise RuntimeError("concept mapping failed")
+        self.calls.append(request)
+        return ConceptMapResponse(thema=request.thema, concepts=[])
+
+
+def _service(
+    repo: FakeThemaRepository, concept_mapper: FakeConceptMapper | None = None
+) -> ThemaService:
+    return ThemaService(repo, concept_mapper or FakeConceptMapper())
+
+
+def _patch_response(monkeypatch, response):
+    async def fake(system_msg, user_msg, config):
+        return response
+
+    monkeypatch.setattr("question_generation_service.services.thema_service.chat_complete", fake)
 
 
 @pytest.mark.asyncio
 async def test_resolved_when_clear_winner(monkeypatch):
-    _patch_samples(
+    _patch_response(
         monkeypatch,
-        [_sample("Photosynthesis", "Science", ["Light Reactions", "Calvin Cycle"])] * 5,
+        _response(
+            "Photosynthesis", "Science", ["Light Reactions", "Calvin Cycle"], confidence=0.95
+        ),
     )
-    service = ThemaService(FakeThemaRepository())
+    service = _service(FakeThemaRepository())
 
     result = await service.extract(ThemaRequest(raw_user_input="how plants make food"))
 
     assert isinstance(result, ResolvedThema)
     assert result.thema == "Photosynthesis"
-    assert result.confidence == 1.0
+    assert result.confidence == 0.95
     assert result.confirmation
     assert result.alternates == []
 
 
 @pytest.mark.asyncio
 async def test_resolved_exposes_runner_up_as_alternate(monkeypatch):
-    _patch_samples(
+    _patch_response(
         monkeypatch,
-        [_sample("Photosynthesis", "Science", ["Light Reactions", "Calvin Cycle"])] * 4
-        + [_sample("Cellular Respiration", "Science", ["Glycolysis", "Krebs Cycle"])],
+        _response(
+            "Photosynthesis",
+            "Science",
+            ["Light Reactions", "Calvin Cycle"],
+            confidence=0.9,
+            alternates=[
+                _alt("Cellular Respiration", "Science", ["Glycolysis", "Krebs Cycle"], 0.1)
+            ],
+        ),
     )
-    service = ThemaService(FakeThemaRepository())
+    service = _service(FakeThemaRepository())
 
     result = await service.extract(ThemaRequest(raw_user_input="how cells make energy"))
 
@@ -143,17 +180,20 @@ async def test_resolved_exposes_runner_up_as_alternate(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_ambiguous_when_split(monkeypatch):
-    _patch_samples(
+    _patch_response(
         monkeypatch,
-        [
-            _sample("If Statement", "Software", ["Syntax", "Truthiness", "Branching"]),
-            _sample("If Statement", "Software", ["Syntax", "Truthiness", "Branching"]),
-            _sample("English Conditionals", "Language", ["Zero", "First", "Second"]),
-            _sample("English Conditionals", "Language", ["Zero", "First", "Second"]),
-            _sample("Excel IF", "Data", ["Args", "Nesting", "IFS"]),
-        ],
+        _response(
+            "If Statement",
+            "Software",
+            ["Syntax", "Truthiness", "Branching"],
+            confidence=0.4,
+            alternates=[
+                _alt("English Conditionals", "Language", ["Zero", "First", "Second"], 0.4),
+                _alt("Excel IF", "Data", ["Args", "Nesting", "IFS"], 0.2),
+            ],
+        ),
     )
-    service = ThemaService(FakeThemaRepository())
+    service = _service(FakeThemaRepository())
 
     result = await service.extract(ThemaRequest(raw_user_input="if"))
 
@@ -164,17 +204,11 @@ async def test_ambiguous_when_split(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_unresolved_when_scattered(monkeypatch):
-    _patch_samples(
+    _patch_response(
         monkeypatch,
-        [
-            _sample("A", "Software", ["x", "y", "z"]),
-            _sample("B", "DevOps", ["x", "y", "z"]),
-            _sample("C", "Language", ["x", "y", "z"]),
-            _sample("D", "Math", ["x", "y", "z"]),
-            _sample("E", "Arts", ["x", "y", "z"]),
-        ],
+        _response("A", "Software", ["x", "y", "z"], confidence=0.2),
     )
-    service = ThemaService(FakeThemaRepository())
+    service = _service(FakeThemaRepository())
 
     result = await service.extract(ThemaRequest(raw_user_input="asdf"))
 
@@ -188,11 +222,13 @@ async def test_refine_supersedes_original_and_reextracts(monkeypatch):
         raw_user_input="agr",
     )
     repo = FakeThemaRepository(entry)
-    _patch_samples(
+    _patch_response(
         monkeypatch,
-        [_sample("Computer Architecture", "Software", ["CPU", "Memory", "Pipelining"])] * 5,
+        _response(
+            "Computer Architecture", "Software", ["CPU", "Memory", "Pipelining"], confidence=0.9
+        ),
     )
-    service = ThemaService(repo)
+    service = _service(repo)
 
     result = await service.refine(entry.id, RefineRequest(clarification="I mean CPU design"))
 
@@ -212,11 +248,11 @@ async def test_refine_allowed_after_confirmation(monkeypatch):
         raw_user_input="agr",
     )
     repo = FakeThemaRepository(entry)
-    _patch_samples(
+    _patch_response(
         monkeypatch,
-        [_sample("Agriculture", "Science", ["Soil", "Crops", "Livestock"])] * 5,
+        _response("Agriculture", "Science", ["Soil", "Crops", "Livestock"], confidence=0.9),
     )
-    service = ThemaService(repo)
+    service = _service(repo)
 
     result = await service.refine(entry.id, RefineRequest(clarification="actually computing"))
 
@@ -228,7 +264,7 @@ async def test_refine_allowed_after_confirmation(monkeypatch):
 @pytest.mark.asyncio
 async def test_refine_rejects_already_superseded_extraction(monkeypatch):
     entry = FakeEntry(notes=json.dumps({"status": "superseded", "candidates": []}))
-    service = ThemaService(FakeThemaRepository(entry))
+    service = _service(FakeThemaRepository(entry))
 
     with pytest.raises(ConflictError):
         await service.refine(entry.id, RefineRequest(clarification="more context"))
@@ -237,7 +273,7 @@ async def test_refine_rejects_already_superseded_extraction(monkeypatch):
 @pytest.mark.asyncio
 async def test_confirm_rejects_superseded_extraction():
     entry = FakeEntry(notes=json.dumps({"status": "superseded", "candidates": []}))
-    service = ThemaService(FakeThemaRepository(entry))
+    service = _service(FakeThemaRepository(entry))
 
     with pytest.raises(ConflictError):
         await service.confirm(entry.id, ConfirmRequest())
@@ -258,7 +294,8 @@ async def test_confirm_default_rank_not_flagged_as_correction():
     ]
     entry = FakeEntry(json.dumps({"status": "pending_confirmation", "candidates": candidates}))
     repo = FakeThemaRepository(entry)
-    service = ThemaService(repo)
+    mapper = FakeConceptMapper()
+    service = _service(repo, mapper)
 
     result = await service.confirm(entry.id, ConfirmRequest())
 
@@ -267,6 +304,33 @@ async def test_confirm_default_rank_not_flagged_as_correction():
     assert entry.user_corrected is False
     assert entry.notes is not None
     assert json.loads(entry.notes)["status"] == "confirmed"
+    assert len(mapper.calls) == 1
+    assert mapper.calls[0].thema == "If Statement"
+    assert mapper.calls[0].topics == ["Syntax", "Truthiness", "Branching"]
+
+
+@pytest.mark.asyncio
+async def test_confirm_leaves_extraction_retryable_when_concept_mapping_fails():
+    candidates = [
+        {
+            "rank": 1,
+            "thema": "If Statement",
+            "domain": "Software",
+            "disambiguator": "if control flow",
+            "confidence": 0.6,
+            "confirmation": "You'll be quizzed on if statements.",
+            "topics": ["Syntax", "Truthiness", "Branching"],
+        }
+    ]
+    entry = FakeEntry(json.dumps({"status": "pending_confirmation", "candidates": candidates}))
+    repo = FakeThemaRepository(entry)
+    service = _service(repo, FakeConceptMapper(fail=True))
+
+    with pytest.raises(RuntimeError):
+        await service.confirm(entry.id, ConfirmRequest())
+
+    assert entry.notes is not None
+    assert json.loads(entry.notes)["status"] == "pending_confirmation"
 
 
 @pytest.mark.asyncio
@@ -292,7 +356,7 @@ async def test_confirm_other_rank_records_correction():
         },
     ]
     entry = FakeEntry(json.dumps({"status": "pending_disambiguation", "candidates": candidates}))
-    service = ThemaService(FakeThemaRepository(entry))
+    service = _service(FakeThemaRepository(entry))
 
     result = await service.confirm(entry.id, ConfirmRequest(chosen_rank=2))
 
@@ -304,7 +368,7 @@ async def test_confirm_other_rank_records_correction():
 @pytest.mark.asyncio
 async def test_confirm_already_confirmed_raises():
     entry = FakeEntry(json.dumps({"status": "confirmed", "candidates": []}))
-    service = ThemaService(FakeThemaRepository(entry))
+    service = _service(FakeThemaRepository(entry))
 
     with pytest.raises(ConflictError):
         await service.confirm(entry.id, ConfirmRequest())
@@ -312,7 +376,7 @@ async def test_confirm_already_confirmed_raises():
 
 @pytest.mark.asyncio
 async def test_confirm_missing_extraction_raises():
-    service = ThemaService(FakeThemaRepository(entry=None))
+    service = _service(FakeThemaRepository(entry=None))
 
     with pytest.raises(NotFoundError):
         await service.confirm(uuid4(), ConfirmRequest())

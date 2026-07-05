@@ -2,7 +2,7 @@ import json
 from typing import Any, TypedDict
 from uuid import UUID
 
-from question_generation_service.clients.mistral_client import chat_complete_samples
+from question_generation_service.clients.mistral_client import chat_complete
 from question_generation_service.core.config import get_settings
 from question_generation_service.core.exceptions import (
     ConflictError,
@@ -14,6 +14,7 @@ from question_generation_service.prompts.thema_topic_extract import (
     PROMPT_1_SYSTEM,
 )
 from question_generation_service.repositories.thema_repository import ThemaRepositoryProtocol
+from question_generation_service.schemas.concept import ConceptMapRequest
 from question_generation_service.schemas.thema import (
     AmbiguousThema,
     ConfirmRequest,
@@ -24,6 +25,7 @@ from question_generation_service.schemas.thema import (
     ThemaRequest,
     UnresolvedThema,
 )
+from question_generation_service.services.concept_service import ConceptMapperProtocol
 
 EXTRACTED_TOPIC_MAX_LENGTH = 255
 MAX_EXPOSED_CANDIDATES = 3
@@ -48,11 +50,6 @@ class _RawCandidate(TypedDict):
 
 class _Candidate(_RawCandidate):
     rank: int
-
-
-class _Group(TypedDict):
-    count: int
-    sample: dict[str, Any]
 
 
 class _ChosenCandidate(TypedDict):
@@ -103,34 +100,23 @@ def _join_topics(topics: list[str]) -> str:
     return ", ".join(topics)[:EXTRACTED_TOPIC_MAX_LENGTH]
 
 
-def _aggregate(samples: list[dict[str, Any]]) -> list[_Candidate]:
-    """Cluster samples by (thema, domain); vote share is the confidence."""
-    groups: dict[tuple[str, str], _Group] = {}
-    order: list[tuple[str, str]] = []
-    for s in samples:
-        key = (s["thema"].strip().lower(), s["domain"])
-        if key not in groups:
-            groups[key] = {"count": 0, "sample": s}
-            order.append(key)
-        groups[key]["count"] += 1
+def _as_raw_candidate(data: dict[str, Any]) -> _RawCandidate:
+    return _RawCandidate(
+        thema=data["thema"],
+        domain=data["domain"],
+        disambiguator=data["disambiguator"],
+        confirmation=data["confirmation"],
+        topics=data["topics"],
+        confidence=data["confidence"],
+    )
 
-    total = len(samples)
-    raw: list[_RawCandidate] = []
-    for key in order:
-        g = groups[key]
-        s = g["sample"]
-        raw.append(
-            _RawCandidate(
-                thema=s["thema"],
-                domain=s["domain"],
-                disambiguator=s["disambiguator"],
-                confirmation=s["confirmation"],
-                topics=s["topics"],
-                confidence=round(g["count"] / total, 3),
-            )
-        )
-    raw.sort(key=lambda c: c["confidence"], reverse=True)
-    return [_Candidate(**raw_c, rank=rank) for rank, raw_c in enumerate(raw, start=1)]
+
+def _to_candidates(response: dict[str, Any]) -> list[_Candidate]:
+    """Primary interpretation plus the model's own self-reported alternates, ranked by
+    self-reported confidence — a single call, no self-consistency voting."""
+    ranked = [_as_raw_candidate(response), *(_as_raw_candidate(a) for a in response["alternates"])]
+    ranked.sort(key=lambda c: c["confidence"], reverse=True)
+    return [_Candidate(**c, rank=rank) for rank, c in enumerate(ranked, start=1)]
 
 
 def _resolved_fields(candidate: _Candidate, alternates: list[ThemaCandidate]) -> _ResolvedFields:
@@ -145,8 +131,9 @@ def _resolved_fields(candidate: _Candidate, alternates: list[ThemaCandidate]) ->
 
 
 class ThemaService:
-    def __init__(self, repository: ThemaRepositoryProtocol):
+    def __init__(self, repository: ThemaRepositoryProtocol, concept_mapper: ConceptMapperProtocol):
         self.repository = repository
+        self.concept_mapper = concept_mapper
         self.settings = get_settings()
 
     def _decide(self, candidates: list[_Candidate], *, is_refine: bool) -> str:
@@ -164,12 +151,12 @@ class ThemaService:
     async def _extract_and_persist(
         self, raw_user_input: str, llm_user_msg: str, parent_extraction_id: UUID | None
     ) -> ThemaExtractionResult:
-        samples = await chat_complete_samples(
+        response = await chat_complete(
             system_msg=PROMPT_1_SYSTEM,
             user_msg=llm_user_msg,
             config=PROMPT_1_CONFIG,
         )
-        candidates = _aggregate(samples)
+        candidates = _to_candidates(response)
         decision = self._decide(candidates, is_refine=parent_extraction_id is not None)
         top = candidates[0]
 
@@ -190,18 +177,12 @@ class ThemaService:
         )
 
         if decision == "resolved":
-            alternates = [
-                ThemaCandidate(**c) for c in candidates[1 : 1 + MAX_EXPOSED_ALTERNATES]
-            ]
-            return ResolvedThema(
-                extraction_id=entry.id, **_resolved_fields(top, alternates)
-            )
+            alternates = [ThemaCandidate(**c) for c in candidates[1 : 1 + MAX_EXPOSED_ALTERNATES]]
+            return ResolvedThema(extraction_id=entry.id, **_resolved_fields(top, alternates))
         if decision == "ambiguous":
             return AmbiguousThema(
                 extraction_id=entry.id,
-                candidates=[
-                    ThemaCandidate(**c) for c in candidates[:MAX_EXPOSED_CANDIDATES]
-                ],
+                candidates=[ThemaCandidate(**c) for c in candidates[:MAX_EXPOSED_CANDIDATES]],
             )
         return UnresolvedThema(extraction_id=entry.id)
 
@@ -256,6 +237,12 @@ class ThemaService:
             request, candidates
         )
 
+        # Map concepts before flipping status to "confirmed" — if this fails, the
+        # extraction stays retryable instead of ending up confirmed with no concepts.
+        await self.concept_mapper.map(
+            ConceptMapRequest(thema=chosen["thema"], topics=chosen["topics"])
+        )
+
         confirmed_payload: _NotesPayload = {
             "status": "confirmed",
             "candidates": candidates,
@@ -289,9 +276,7 @@ class ThemaService:
             raise NotFoundError("No candidates stored for this extraction")
 
         rank = request.chosen_rank or 1
-        match: _Candidate | None = next(
-            (c for c in candidates if c["rank"] == rank), None
-        )
+        match: _Candidate | None = next((c for c in candidates if c["rank"] == rank), None)
         if match is None:
             raise InvalidInputError(f"No candidate with rank {rank}")
 

@@ -1,9 +1,10 @@
-from question_generation_service.clients.mistral_config import CompletionConfig
-
 from mistralai.client.models import ResponseFormat
 from mistralai.client.models.jsonschema import JSONSchema
 
-# Fixed taxonomy so disambiguators and self-consistency clustering stay stable.
+from question_generation_service.clients.mistral_config import CompletionConfig
+from question_generation_service.core.config import get_settings
+
+# Fixed taxonomy so disambiguators stay stable across requests.
 DOMAINS = [
     "Software",
     "DevOps",
@@ -16,11 +17,32 @@ DOMAINS = [
     "General",
 ]
 
-SELF_CONSISTENCY_SAMPLES = 5
+MAX_ALTERNATES = 2
+
+_INTERPRETATION_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "thema": {"type": "string"},
+        "domain": {"type": "string", "enum": DOMAINS},
+        "disambiguator": {"type": "string"},
+        "confirmation": {"type": "string"},
+        "topics": {
+            "type": "array",
+            "items": {"type": "string"},
+            "minItems": 3,
+            "maxItems": 7,
+        },
+        "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+    },
+    "required": ["thema", "domain", "disambiguator", "confirmation", "topics", "confidence"],
+    "additionalProperties": False,
+}
 
 PROMPT_1_SYSTEM = """
-You are an educational taxonomy expert. Read the learner's raw input and return
-ONE most-plausible interpretation of what they want to study.
+You are an educational taxonomy expert. Read the learner's raw input and return your
+single most-plausible interpretation of what they want to study, plus your own
+self-assessed confidence and, if the input is genuinely ambiguous, up to {max_alternates}
+alternate interpretations.
 
 Output a single JSON object with:
 - "thema": canonical subject domain (Title Case, singular, no punctuation)
@@ -30,6 +52,11 @@ Output a single JSON object with:
   naming the scope and, where useful, what is excluded
 - "topics": 3 to 7 distinct, non-overlapping subtopics a learner would expect and
   want to be quizzed on for this thema — see RULE 5, count is not a target
+- "confidence": your own honest probability (0.0-1.0) that this is the reading the
+  learner actually meant, GIVEN the alternates you also considered — see RULE 7
+- "alternates": 0 to {max_alternates} other plausible readings, each with the same
+  five fields above (thema/domain/disambiguator/confirmation/topics/confidence) —
+  empty array if the input is not genuinely ambiguous
 
 RULES:
 1. Collapse synonyms/rephrasings into one canonical thema
@@ -37,9 +64,9 @@ RULES:
 2. If a CONTENT BODY is provided it is AUTHORITATIVE: derive the thema from it and
    never contradict it; treat the keyword only as a lens over that body.
 3. If LEARNER CONTEXT is provided, use it to bias toward the learner's likely intent.
-4. The input may be a homonym spanning several domains (e.g. "if", "spring").
-   Read it naturally for THIS sample; do not force a fixed reading across samples —
-   pick the interpretation that is genuinely most plausible given the context.
+4. The input may be a homonym spanning several domains (e.g. "if", "spring"). When it
+   genuinely is, put your best guess first and the other live readings in "alternates"
+   — do not silently pick one and hide that it was a close call.
 5. Never include topics outside the chosen thema's scope. 7 is a ceiling, not a
    goal: include a topic only if it is core to the thema and a learner would very
    likely expect to be quizzed on it. Drop niche, overly specific, or tangential
@@ -54,19 +81,22 @@ RULES:
      things into the topics directly (phrased as proper topic titles) rather
      than substituting a generic curriculum — the learner already told you
      exactly what they want.
-   - Commit to ONE decisive thema name and do not hedge: the learner already
-     disambiguated once, so do not vary the thema label across re-reads of an
-     already-clarified input the way you would for a genuinely ambiguous bare
-     keyword — paraphrasing the same answer differently each time looks like
-     disagreement and forces the learner to re-disambiguate for no reason.
+   - Commit to ONE decisive thema with confidence >= 0.9 and an empty "alternates" —
+     the learner already disambiguated once, so treat the case as closed rather
+     than reopening the same ambiguity you would flag for a bare keyword.
+7. Calibrate honestly: confidence is a probability, not an enthusiasm score. If two
+   readings are both plausible, the top pick's confidence should reflect that split
+   (e.g. ~0.5-0.6 each, not 0.9), and you must list the other reading as an alternate.
+   Reserve confidence >= 0.85 for cases with no serious competing reading.
 
 OUTPUT: strict JSON only — no explanation, no markdown, no extra text.
-""".format(domains=", ".join(DOMAINS))
+""".format(domains=", ".join(DOMAINS), max_alternates=MAX_ALTERNATES)
 
 PROMPT_1_CONFIG = CompletionConfig(
-    temperature=0.7,
-    max_tokens=512,
-    n=SELF_CONSISTENCY_SAMPLES,
+    model=get_settings().MISTRAL_MODEL,
+    temperature=0.3,
+    max_tokens=1024,
+    n=1,
     random_seed=None,
     response_format=ResponseFormat(
         type="json_schema",
@@ -76,18 +106,15 @@ PROMPT_1_CONFIG = CompletionConfig(
             schema_definition={
                 "type": "object",
                 "properties": {
-                    "thema": {"type": "string"},
-                    "domain": {"type": "string", "enum": DOMAINS},
-                    "disambiguator": {"type": "string"},
-                    "confirmation": {"type": "string"},
-                    "topics": {
+                    **_INTERPRETATION_SCHEMA["properties"],
+                    "alternates": {
                         "type": "array",
-                        "items": {"type": "string"},
-                        "minItems": 3,
-                        "maxItems": 7,
+                        "items": _INTERPRETATION_SCHEMA,
+                        "minItems": 0,
+                        "maxItems": MAX_ALTERNATES,
                     },
                 },
-                "required": ["thema", "domain", "disambiguator", "confirmation", "topics"],
+                "required": [*_INTERPRETATION_SCHEMA["required"], "alternates"],
                 "additionalProperties": False,
             },
         ),

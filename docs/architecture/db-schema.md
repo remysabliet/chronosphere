@@ -287,6 +287,7 @@ CREATE TABLE concept_progress_tracker (
 user_id UUID NOT NULL,
 concept_id UUID NOT NULL,
 bloom_level TEXT NOT NULL,
+p_ln FLOAT, -- current BKT mastery probability for this pair
 first_attempt DATETIME,
 last_attempt DATETIME,
 attempt_count INT,

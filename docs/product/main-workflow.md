@@ -12,7 +12,7 @@
   - **moderator**: Content moderator
   - **content_creator**: Learning material creator
   - **analyst**: Data analyst
-- Store in: `user_profile` and `user_roles`
+- Store in: `users` and `user_roles`
 
 # 🔹 Step 2: Role-Based Access Control
 
@@ -46,7 +46,7 @@
 
 ## 🔹 Step B: Pre-Session Planning
 
-- Populate `session_review_queue` from `review_queue`, lowest predicted recall first
+- Build the session's review list from `review_queue`, lowest predicted recall first
 - Present "Memory Refresh" module before new learning begins
 
 ## 🔹 Step C: Review Question Selection
@@ -104,7 +104,7 @@ For the reviewed concept–Bloom pair:
   - Set `session_type` (learning, review, assessment)
   - Record `start_time`
   - Initialize session tracking fields
-- Store in: `quiz_metadata` and `quiz_sessions`
+- Store in: `quiz_sessions`
 
 # 🔹 Step 5: Thema Extraction & Exposure Check (Prompt 1)
 
@@ -143,7 +143,7 @@ Set initial P(L0) based on exposure:
 - Each answer adjusts P(L0) of the thema's concepts by ±0.1, clamped to [0.1, 0.9]
 - Runs inside the normal session — no extra UI; the adaptive loop takes over from question 4
 
-# 🔹 Step 6: Concept–Bloom Mapping (prompt2)
+# 🔹 Step 6: Concept–Bloom Mapping (Prompt 2)
 
 ## 🧠 Logic Flow
 
@@ -158,30 +158,27 @@ Set initial P(L0) based on exposure:
 }
 ```
 
-### Prompt 1 Execution
+### Prompt 2 Execution
 
 - AI generates a list of atomic concepts under the Thema
 - For each concept, assign feasible Bloom levels (based on cognitive task type, not difficulty)
+- For each concept, assign a complexity level (Low / Medium / High) → stored in `learning_units.complexity_level`
 - Store in `concept_map`
 - Each entry links the Thema → Concept → Bloom level
 - This becomes the scope for adaptive question generation
 
-# 🔹 Step 7: BKT Initialization
+# 🔹 Step 7: BKT Initialization (no LLM call)
 
-**Prompt 3**: Generate BKT parameters per concept:
+Initialize BKT parameters per concept in code — no prompt involved:
 
-- P(L0), P(T), P(G), P(S)
-- Based on: `user_profile` + `user_thema_exposure`
-- Generate a complexity level per concept
-- Retrieve all default BKT parameters from table `bkt_parameter_defaults` based on the complexity level retrieved from prompt2.
+- **P(L0)**: from the exposure level collected in Step 5 (Unseen 0.2 / Recognized 0.4 / Practiced 0.6 / Mastered 0.8), refined by the placement probe
+- **P(T), P(G), P(S)**: retrieved from `bkt_parameter_defaults`, keyed by the concept's `complexity_level` assigned in Step 6 (Prompt 2)
 
 ### In the code, apply following logic:
 
 1. Does the user have a profile? (age, education, profession)
-2. Has the user been exposed to the Thema before?
-3. Provide BKT default parameters based on question above (look section bkt-initialization)
-
-_See `python-functions.md` for the `initialize_bkt()` function implementation._
+2. Has the user been exposed to the Thema before? (`user_thema_exposure`)
+3. Look up `bkt_parameter_defaults` by complexity level and seed P(L0) from exposure
 
 # 🔹 Step 8: Question Generation & Validation
 
@@ -200,7 +197,7 @@ Questions are personal to each user and generated ahead of need — never with a
 - **Serving** = reading an already-generated question from the user's buffer in the `questions` table (<200ms, indexed read)
 - **Buffer empty** (user faster than generator): fall back to a live LLM call with a "preparing your question…" state — the exception, not the norm
 
-## 🔹 Step 7A: Question Validation
+## 🔹 Step 8A: Question Validation
 
 **Purpose**: Ensure question quality before serving to learners
 
@@ -235,7 +232,7 @@ _See `python-functions.md` for the `validate_question()` function implementation
 1. **Generate question** using Prompt 3
 2. **Run validation** using checklist above
 3. **Log validation results** in `question_validation_log`
-4. **If validation passes**: Store in `question_bank`
+4. **If validation passes**: Store in `questions`
 5. **If validation fails**: Regenerate or flag for manual review
 
 ### Feedback-Based Quality Improvement
@@ -252,7 +249,7 @@ _See `python-functions.md` for the `validate_question()` function implementation
 
 ### Store Results
 
-- **Valid questions**: Store in `question_bank`
+- **Valid questions**: Store in `questions`
 - **Validation log**: Store in `question_validation_log` with:
   - `validation_status`: "Passed", "Failed", or "Warning"
   - `failed_checks`: Array of specific issues
@@ -282,8 +279,8 @@ _See `python-functions.md` for the `validate_question()` function implementation
 
 Invoke function `update_bkt` in order to update:
 
-- BKT: P(Ln) for concept
-- Store updated value in: `user_concept_mastery` and `user_response` table
+- BKT: P(Ln) for the concept–Bloom pair
+- Store the updated P(Ln) in `concept_progress_tracker.p_ln` (current mastery per pair); the answer itself is already logged in `user_responses` (Step 9)
 
 **Log feedback data**:
 
@@ -301,15 +298,13 @@ _See `python-functions.md` for the `update_bkt()` function implementation._
 
 ### Check for Review Tasks (Spaced Repetition)
 
-- Scan `review_queue` for entries with:
-  - `status = "Pending"`
-  - `scheduled_date ≤ now`
+- Scan `review_queue` for this user's entries (an entry's presence means a review is due — Step 3A only inserts due pairs, and Step 3D deletes completed ones)
 - If found:
   - Select the `concept_id` and `bloom_level` from the review entry
   - Set `decision_type = "Review"`
-  - Serve a question from the user's pre-generated buffer (generate via Prompt 4 only if the buffer is empty)
+  - Serve a question from the user's pre-generated buffer (generate via Prompt 3 only if the buffer is empty)
   - After response:
-    - Update `review_queue.status = "Completed"`
+    - Move the entry to `review_queue_archive` and delete it from `review_queue` (Step 3D)
     - Update `mastery_log.last_reinforced = now`
     - Update `fsrs_state` / `next_review_at` with the outcome
 

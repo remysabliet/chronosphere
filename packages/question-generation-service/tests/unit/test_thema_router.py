@@ -3,6 +3,7 @@ from uuid import uuid4
 
 from question_generation_service.dependencies.rate_limit import RateLimiter, ai_rate_limiter
 from question_generation_service.main import app
+from question_generation_service.schemas.exposure import ExposureResult
 from question_generation_service.schemas.thema import (
     AmbiguousThema,
     ResolvedThema,
@@ -111,6 +112,30 @@ def test_router_requires_auth(anon_client):
     """No auth override — bearer token is missing → 403 or 401."""
     response = anon_client.post("/v1/thema/extract", json={"raw_user_input": "photosynthesis"})
     assert response.status_code in (401, 403)
+
+
+def test_confirm_propagates_exposure_required(client, mock_thema_service):
+    eid = uuid4()
+    resolved = _resolved(eid)
+    resolved.exposure_required = True
+    mock_thema_service.confirm = AsyncMock(return_value=resolved)
+    response = client.post(f"/v1/thema/{eid}/confirm", json={})
+    assert response.status_code == 200
+    assert response.json()["exposure_required"] is True
+
+
+def test_submit_exposure_returns_result(client, mock_exposure_service):
+    eid = uuid4()
+    mock_exposure_service.submit = AsyncMock(
+        return_value=ExposureResult(
+            thema="Photosynthesis", exposure_level="Practiced", p_l0=0.6, concepts_initialized=4
+        )
+    )
+    response = client.post(f"/v1/thema/{eid}/exposure", json={"exposure_level": "Practiced"})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["p_l0"] == 0.6
+    assert data["concepts_initialized"] == 4
 
 
 def test_extract_rate_limited_after_threshold(client, mock_thema_service):

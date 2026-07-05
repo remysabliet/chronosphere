@@ -12,7 +12,11 @@ from question_generation_service.core.exceptions import (
 from question_generation_service.repositories.thema_repository import (
     ThemaEntryProtocol,
 )
-from question_generation_service.schemas.concept import ConceptMapRequest, ConceptMapResponse
+from question_generation_service.schemas.concept import (
+    ConceptMapRequest,
+    ConceptMapResponse,
+    StoredConceptItem,
+)
 from question_generation_service.schemas.thema import (
     AmbiguousThema,
     ConfirmRequest,
@@ -23,6 +27,8 @@ from question_generation_service.schemas.thema import (
     UnresolvedThema,
 )
 from question_generation_service.services.thema_service import ThemaService
+
+TEST_USER_ID = uuid4()
 
 
 def _alt(thema: str, domain: str, topics: list[str], confidence: float) -> dict[str, object]:
@@ -129,21 +135,69 @@ class FakeThemaRepository:
 
 
 class FakeConceptMapper:
-    def __init__(self, *, fail: bool = False) -> None:
+    def __init__(
+        self, *, fail: bool = False, concepts: list[StoredConceptItem] | None = None
+    ) -> None:
         self.fail = fail
+        self.concepts = concepts or []
         self.calls: list[ConceptMapRequest] = []
 
     async def map(self, request: ConceptMapRequest) -> ConceptMapResponse:
         if self.fail:
             raise RuntimeError("concept mapping failed")
         self.calls.append(request)
-        return ConceptMapResponse(thema=request.thema, concepts=[])
+        return ConceptMapResponse(thema=request.thema, concepts=self.concepts)
+
+
+class _FakeExposureEntry:
+    def __init__(self, user_id: UUID, thema: str, exposure_level: str, source: str | None) -> None:
+        self.user_id = user_id
+        self.thema = thema
+        self.exposure_level = exposure_level
+        self.source = source
+
+
+class FakeExposureRepository:
+    def __init__(self, exposure_level: str | None = None) -> None:
+        self._stored: dict[tuple[UUID, str], str] = {}
+        self._preset_level = exposure_level
+
+    async def get(self, user_id: UUID, thema: str) -> _FakeExposureEntry | None:
+        level = self._stored.get((user_id, thema), self._preset_level)
+        if level is None:
+            return None
+        return _FakeExposureEntry(user_id, thema, level, source=None)
+
+    async def save(
+        self, user_id: UUID, thema: str, exposure_level: str, source: str
+    ) -> _FakeExposureEntry:
+        self._stored[(user_id, thema)] = exposure_level
+        return _FakeExposureEntry(user_id, thema, exposure_level, source)
+
+
+class FakeBktInitService:
+    def __init__(self) -> None:
+        self.calls: list[tuple[UUID, list[tuple[UUID, str]], float]] = []
+
+    async def initialize(
+        self, user_id: UUID, concept_bloom_pairs: list[tuple[UUID, str]], p_l0: float
+    ) -> int:
+        self.calls.append((user_id, concept_bloom_pairs, p_l0))
+        return len(concept_bloom_pairs)
 
 
 def _service(
-    repo: FakeThemaRepository, concept_mapper: FakeConceptMapper | None = None
+    repo: FakeThemaRepository,
+    concept_mapper: FakeConceptMapper | None = None,
+    exposure_repository: FakeExposureRepository | None = None,
+    bkt_init_service: FakeBktInitService | None = None,
 ) -> ThemaService:
-    return ThemaService(repo, concept_mapper or FakeConceptMapper())
+    return ThemaService(
+        repo,
+        concept_mapper or FakeConceptMapper(),
+        exposure_repository or FakeExposureRepository(),
+        bkt_init_service or FakeBktInitService(),
+    )
 
 
 def _patch_response(monkeypatch, response):
@@ -271,7 +325,7 @@ async def test_confirm_rejects_non_topic():
     service = _service(FakeThemaRepository(entry))
 
     with pytest.raises(InvalidInputError):
-        await service.confirm(entry.id, ConfirmRequest())
+        await service.confirm(entry.id, ConfirmRequest(), TEST_USER_ID)
 
 
 @pytest.mark.asyncio
@@ -335,7 +389,7 @@ async def test_confirm_rejects_superseded_extraction():
     service = _service(FakeThemaRepository(entry))
 
     with pytest.raises(ConflictError):
-        await service.confirm(entry.id, ConfirmRequest())
+        await service.confirm(entry.id, ConfirmRequest(), TEST_USER_ID)
 
 
 @pytest.mark.asyncio
@@ -356,7 +410,7 @@ async def test_confirm_default_rank_not_flagged_as_correction():
     mapper = FakeConceptMapper()
     service = _service(repo, mapper)
 
-    result = await service.confirm(entry.id, ConfirmRequest())
+    result = await service.confirm(entry.id, ConfirmRequest(), TEST_USER_ID)
 
     assert isinstance(result, ResolvedThema)
     assert result.thema == "If Statement"
@@ -386,7 +440,7 @@ async def test_confirm_leaves_extraction_retryable_when_concept_mapping_fails():
     service = _service(repo, FakeConceptMapper(fail=True))
 
     with pytest.raises(RuntimeError):
-        await service.confirm(entry.id, ConfirmRequest())
+        await service.confirm(entry.id, ConfirmRequest(), TEST_USER_ID)
 
     assert entry.notes is not None
     assert json.loads(entry.notes)["status"] == "pending_confirmation"
@@ -417,7 +471,7 @@ async def test_confirm_other_rank_records_correction():
     entry = FakeEntry(json.dumps({"status": "pending_disambiguation", "candidates": candidates}))
     service = _service(FakeThemaRepository(entry))
 
-    result = await service.confirm(entry.id, ConfirmRequest(chosen_rank=2))
+    result = await service.confirm(entry.id, ConfirmRequest(chosen_rank=2), TEST_USER_ID)
 
     assert result.thema == "English Conditionals"
     assert entry.user_corrected is True
@@ -430,7 +484,7 @@ async def test_confirm_already_confirmed_raises():
     service = _service(FakeThemaRepository(entry))
 
     with pytest.raises(ConflictError):
-        await service.confirm(entry.id, ConfirmRequest())
+        await service.confirm(entry.id, ConfirmRequest(), TEST_USER_ID)
 
 
 @pytest.mark.asyncio
@@ -438,4 +492,68 @@ async def test_confirm_missing_extraction_raises():
     service = _service(FakeThemaRepository(entry=None))
 
     with pytest.raises(NotFoundError):
-        await service.confirm(uuid4(), ConfirmRequest())
+        await service.confirm(uuid4(), ConfirmRequest(), TEST_USER_ID)
+
+
+def _candidate(thema: str, topics: list[str]) -> dict[str, object]:
+    return {
+        "rank": 1,
+        "thema": thema,
+        "domain": "Software",
+        "disambiguator": "d",
+        "confidence": 0.9,
+        "confirmation": "c",
+        "topics": topics,
+    }
+
+
+@pytest.mark.asyncio
+async def test_confirm_flags_exposure_required_when_unknown():
+    entry = FakeEntry(
+        json.dumps(
+            {"status": "pending_confirmation", "candidates": [_candidate("Rust", ["Ownership"])]}
+        )
+    )
+    service = _service(FakeThemaRepository(entry), exposure_repository=FakeExposureRepository())
+
+    result = await service.confirm(entry.id, ConfirmRequest(), TEST_USER_ID)
+
+    assert isinstance(result, ResolvedThema)
+    assert result.exposure_required is True
+
+
+@pytest.mark.asyncio
+async def test_confirm_seeds_bkt_when_exposure_known():
+    entry = FakeEntry(
+        json.dumps(
+            {"status": "pending_confirmation", "candidates": [_candidate("Rust", ["Ownership"])]}
+        )
+    )
+    concept_id = uuid4()
+    concepts = [
+        StoredConceptItem(
+            id=concept_id,
+            topic="Ownership",
+            concept="Borrow checker",
+            learning_goal="Understand borrowing",
+            bloom_levels=["Remembering", "Understanding"],
+            estimated_time_minutes=10,
+            complexity_level="Medium",
+        )
+    ]
+    bkt_init_service = FakeBktInitService()
+    service = _service(
+        FakeThemaRepository(entry),
+        concept_mapper=FakeConceptMapper(concepts=concepts),
+        exposure_repository=FakeExposureRepository(exposure_level="Practiced"),
+        bkt_init_service=bkt_init_service,
+    )
+
+    result = await service.confirm(entry.id, ConfirmRequest(), TEST_USER_ID)
+
+    assert result.exposure_required is False
+    assert len(bkt_init_service.calls) == 1
+    user_id, pairs, p_l0 = bkt_init_service.calls[0]
+    assert user_id == TEST_USER_ID
+    assert set(pairs) == {(concept_id, "Remembering"), (concept_id, "Understanding")}
+    assert p_l0 == 0.6

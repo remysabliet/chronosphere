@@ -22,11 +22,19 @@ get_settings.cache_clear()
 from question_generation_service.db.session import get_session
 from question_generation_service.dependencies.auth import current_user_dependency
 from question_generation_service.dependencies.rate_limit import ai_rate_limiter
-from question_generation_service.dependencies.services import get_thema_service
+from question_generation_service.dependencies.services import (
+    get_exposure_service,
+    get_thema_service,
+)
 from question_generation_service.main import app
+from question_generation_service.services.exposure_service import ExposureService
 from question_generation_service.services.thema_service import ThemaService
 
-_FAKE_USER: dict[str, Any] = {"sub": "test-user-id", "email": "test@example.com"}
+# A real UUID, since routers now parse `sub` with UUID(...) to thread user_id through.
+_FAKE_USER: dict[str, Any] = {
+    "sub": "11111111-1111-1111-1111-111111111111",
+    "email": "test@example.com",
+}
 
 
 async def _fake_session() -> AsyncGenerator[MagicMock]:
@@ -58,11 +66,19 @@ def mock_thema_service() -> MagicMock:
 
 
 @pytest.fixture
-def client(mock_thema_service: MagicMock):
+def mock_exposure_service() -> MagicMock:
+    svc = MagicMock(spec=ExposureService)
+    svc.submit = AsyncMock()
+    return svc
+
+
+@pytest.fixture
+def client(mock_thema_service: MagicMock, mock_exposure_service: MagicMock):
     """TestClient with auth + DB + service fully overridden."""
     app.dependency_overrides[current_user_dependency] = lambda: _FAKE_USER
     app.dependency_overrides[get_session] = _fake_session
     app.dependency_overrides[get_thema_service] = lambda: mock_thema_service
+    app.dependency_overrides[get_exposure_service] = lambda: mock_exposure_service
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()

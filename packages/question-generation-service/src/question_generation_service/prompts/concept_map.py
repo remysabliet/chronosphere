@@ -2,6 +2,7 @@ from mistralai.client.models import ResponseFormat
 from mistralai.client.models.jsonschema import JSONSchema
 
 from question_generation_service.clients.mistral_config import CompletionConfig
+from question_generation_service.core.config import get_settings
 
 BLOOM_LEVELS = [
     "Remembering",
@@ -48,6 +49,7 @@ OUTPUT: strict JSON only — no explanation, no markdown, no extra text.
 """
 
 PROMPT_2_CONFIG = CompletionConfig(
+    model=get_settings().MISTRAL_MODEL,
     temperature=0.2,
     max_tokens=4096,
     n=1,

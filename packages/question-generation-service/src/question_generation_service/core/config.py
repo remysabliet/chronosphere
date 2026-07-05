@@ -10,6 +10,7 @@ ENV_PATH = ROOT_DIR / ".env"
 class Settings(BaseSettings):
     DATABASE_URL: str
     MISTRAL_API_KEY: str
+    MISTRAL_MODEL: str = "mistral-large-latest"
     COGNITO_ISSUER: str
     COGNITO_CLIENT_ID: str
     DEBUG: bool = False

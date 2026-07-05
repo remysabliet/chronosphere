@@ -22,7 +22,10 @@ from question_generation_service.core.exceptions import (
 logger = logging.getLogger(__name__)
 
 settings = get_settings()
-client = Mistral(api_key=settings.MISTRAL_API_KEY)
+# httpx's default read timeout is 5s — too short for max_tokens=4096 structured
+# completions (e.g. concept mapping), which can legitimately take longer to generate.
+client = Mistral(api_key=settings.MISTRAL_API_KEY, timeout_ms=60_000)
+
 
 async def aclose() -> None:
     await client.__aexit__(None, None, None)  # type: ignore[no-untyped-call]
@@ -52,7 +55,7 @@ async def _complete(system_msg: str, user_msg: str, config: CompletionConfig) ->
         logger.error("Mistral API error: status=%s body=%s", e.status_code, e.body)
         raise AIUnavailableError(f"Mistral API returned {e.status_code}") from e
     except Exception as e:
-        logger.error("Mistral network error: %s", e)
+        logger.error("Mistral network error: %s: %r", type(e).__name__, e)
         raise AIUnavailableError("Mistral API unreachable") from e
 
 
@@ -66,9 +69,7 @@ def _parse_content(content: object) -> dict[str, Any]:
         raise AIInvalidResponseError("Mistral response is not valid JSON") from e
 
 
-async def chat_complete(
-    system_msg: str, user_msg: str, config: CompletionConfig
-) -> dict[str, Any]:
+async def chat_complete(system_msg: str, user_msg: str, config: CompletionConfig) -> dict[str, Any]:
     response = await _complete(system_msg, user_msg, config)
     message = response.choices[0].message if response.choices else None
     content = message.content if message else None

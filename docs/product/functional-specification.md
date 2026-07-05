@@ -55,19 +55,17 @@
 2. User recalls answer mentally or speaks aloud
 3. User flips card to reveal answer
 4. User rates difficulty → adjusts next review interval
-5. BKT/IRT updated based on self-reported difficulty
+5. BKT updated: the rating maps to a response score fed through `update_bkt()`
 
 **Spaced Repetition Schedule**:
 
-- **Easy**: Next review in 7 days
-- **Good**: Next review in 3 days
-- **Hard**: Next review in 1 day
-- **Again**: Review later in same session
+- Intervals are computed per card by FSRS from the Again/Hard/Good/Easy rating history
+- **Again**: also re-queued later in the same session
 
 **Business Rules**:
 
 - Memocards used for "Remembering" Bloom level primarily
-- Each card tagged with concept, Bloom level, IRT metadata
+- Each card tagged with concept, Bloom level, difficulty tier
 - Cards can be favorited, archived, or flagged
 - Deck size: 10-50 cards per session
 
@@ -241,11 +239,11 @@
 
 **Process**:
 
-1. Scan `mastery_log` for concepts where `decay_status = 'Active'` and `mastery_date + decay_threshold_days ≤ NOW()`
-2. Apply decay algorithm to reduce P(Ln)
+1. For each concept–Bloom pair in `mastery_log`, compute FSRS predicted recall from `fsrs_state`
+2. Queue pairs with predicted recall < 0.90 (or `next_review_at ≤ NOW()`)
 3. Generate review queue prioritizing:
-   - Expired mastery (highest priority)
-   - Due memocards (flashcard intervals)
+   - Lowest predicted recall (highest priority)
+   - Due memocards (FSRS intervals)
    - Concepts with high slip count
 4. **Select review format** based on concept type:
    - Visual concepts → Image-based questions or memocards
@@ -334,7 +332,7 @@
 **Inputs**:
 
 - Concept-Bloom pairs
-- Current mastery (P(Ln), θ)
+- Current mastery (P(Ln))
 - Mnemonic technique recommendations
 - User multimedia preferences
 
@@ -368,12 +366,11 @@
    **For Memocards**:
    - Front: Question + optional image
    - Back: Answer + mnemonic imagery + audio
-   - Assign SM-2 algorithm interval (SuperMemo)
+   - Assign initial FSRS memory state
 
-4. **Assign IRT Metadata**:
-   - `difficulty_b`: Adjusted for question type
-   - `discrimination_a`: Higher for interactive questions
-   - `guessing_c`: Lower for memocards (no guessing)
+4. **Assign Difficulty Tier**:
+   - `difficulty_tier`: easy / medium / hard, proposed by the LLM at generation time
+   - Labeling accuracy monitored via observed correct rates in `user_responses` (per concept–tier); drift feeds back into prompt tuning
 
 5. **Validate Question**:
    - Content quality checks
@@ -459,10 +456,8 @@
    - Play pronunciation audio
    - "How difficult was this?" → Easy / Good / Hard / Again
 3. **Model Update**:
-   - Easy → P(Ln) +0.15, next review in 7 days
-   - Good → P(Ln) +0.10, next review in 3 days
-   - Hard → P(Ln) +0.05, next review in 1 day
-   - Again → P(Ln) -0.05, review again this session
+   - Rating maps to a response score fed through `update_bkt()` — never a direct P(Ln) adjustment: Again = 0.0, Hard = 0.4, Good = 0.8, Easy = 1.0
+   - Review scheduling: FSRS computes the next review date from the rating; Again → also re-queued this session
 
 #### MCQ/Interactive Flow
 
@@ -511,21 +506,19 @@
 
 #### Step 10: Model Update
 
-- **Update BKT**: Call `update_bkt()` with adjustments:
-  - Memocard self-rating → direct P(Ln) adjustment
-  - Hints used → reduce learning gain by 50%
-  - Audio replays >1 → slight P(Ln) penalty
-- **Update IRT**: Call `update_irt()` with:
-  - Faster responses → higher learning rate
-  - Memocards skip IRT update (self-paced)
+- **Update BKT**: Call `update_bkt()` with a response score — all evidence goes through the formula, nothing adjusts P(Ln) directly:
+  - Correct without hints → 1.0; incorrect → 0.0
+  - Hint-assisted correct answer → 0.5
+  - Memocard self-rating → Again = 0.0, Hard = 0.4, Good = 0.8, Easy = 1.0
+  - Audio replays: no P(Ln) effect (tracked for personalization only)
 - **Update Memocard Schedule**:
-  - SM-2 algorithm for flashcard intervals
-  - Store `next_review_date` in `memocard_schedule` table
+  - FSRS computes the next interval from the rating
+  - Store `fsrs_state` and `next_review_at`
 
 **Outputs**:
 
 - Response logged with multimedia engagement metrics
-- P(Ln) and θ updated per concept
+- P(Ln) updated per concept
 - Memocard schedule updated
 - Feedback stored
 
@@ -566,14 +559,15 @@
    - If audio engagement high → Prioritize listening questions
    - If hints frequently used → More scaffolded questions
 
-4. **Adaptive Difficulty** (existing logic):
-   - Reinforce (P(Ln) < 0.6) → Lower Bloom, easier difficulty
-   - Advance (P(Ln) > 0.9, θ > 2.5) → Higher Bloom, harder difficulty
-   - Remediate (slips) → Same concept, different question type
+4. **Adaptive Difficulty** (exhaustive bands, no gaps):
+   - Remediate (P(Ln) < 0.40, or repeated slips) → Lower Bloom, easier tier, free hints
+   - Practice (0.40 ≤ P(Ln) ≤ 0.85) → Same level, tier matched to P(Ln)
+   - Advance (P(Ln) > 0.85) → Higher Bloom, harder tier
+   - Mastered (P(Ln) ≥ 0.95 + last 3 answers clean) → declared mastered, moves to review schedule
 
 **Inputs**:
 
-- Current P(Ln) and θ
+- Current P(Ln)
 - Question type history (avoid 5+ consecutive same type)
 - Multimedia engagement metrics
 - Session fatigue indicators (time, question count)
@@ -618,7 +612,7 @@
 
 - **Declare Mastery** (existing criteria)
 - **Generate Personalized Feedback**:
-  - "You learn best with visual diagrams" (if image engagement high)
+  - "You engaged most with visual diagrams" (if image engagement high)
   - "Try more memocards for vocabulary" (if Remembering level struggles)
   - "Listening comprehension improved 20% this session"
 - **Memocard Deck Suggestions**:
@@ -670,10 +664,8 @@ CREATE TABLE memocards (
   back_image_url TEXT,
   back_audio_url TEXT,
   mnemonic_aids JSON, -- {imagery, audio, association, memory_palace}
-  sm2_ease_factor FLOAT DEFAULT 2.5,
-  sm2_interval_days INT DEFAULT 1,
-  sm2_repetitions INT DEFAULT 0,
-  next_review_date DATE,
+  fsrs_state JSON, -- FSRS memory state (stability, difficulty, ...)
+  next_review_at TIMESTAMP,
   created_at TIMESTAMP,
   last_reviewed_at TIMESTAMP
 );
@@ -701,27 +693,20 @@ CREATE TABLE memocards (
 
 ---
 
-### 4.3 Spaced Repetition Algorithm (SM-2)
+### 4.3 Spaced Repetition Algorithm (FSRS)
 
 **Function**: Optimal review intervals for long-term retention
 
-**Formula**:
+**Implementation**: `py-fsrs` Python library — the modern successor to SM-2, fit to hundreds of millions of real reviews (used by Anki)
 
-- **Correct answer**: Interval = Interval × Ease Factor
-- **Incorrect answer**: Interval resets to 1 day, Ease Factor -0.2
-
-**Self-Rating Adjustments**:
-
-- **Again** (0): Interval = 1 day, EF -= 0.2
-- **Hard** (3): Interval = Interval × 1.2, EF -= 0.15
-- **Good** (4): Interval = Interval × EF, no EF change
-- **Easy** (5): Interval = Interval × EF × 1.3, EF += 0.1
+- Each card and each concept–Bloom pair keeps a small `fsrs_state` (a few floats), updated after every review
+- Again / Hard / Good / Easy ratings map directly onto FSRS's four grades
+- FSRS outputs both the next review date and the current predicted recall probability — the single decay signal used across the system (review priority, dashboard "fading" indicators)
 
 **Business Rules**:
 
 - Minimum interval: 1 day
 - Maximum interval: 365 days (1 year)
-- Ease factor range: 1.3 to 2.5
 
 ---
 
@@ -797,19 +782,21 @@ CREATE TABLE memocards (
 - Hint usage by question type
 - Self-reported difficulty by modality
 
-**Learning Style Inference** (after 50+ questions):
+**Engagement Preference Detection** (after 50+ questions):
 
-- **Visual Learner**: High image engagement, low audio usage
-- **Auditory Learner**: High audio engagement, prefers listening questions
-- **Kinesthetic Learner**: Prefers interactive/game-based, fast response times
-- **Reading/Writing**: Prefers text-only, avoids multimedia
+- High image engagement → prefers visual formats
+- High audio engagement → prefers listening formats
+- Fast responses on interactive/game formats → prefers interactive formats
+- Low multimedia engagement → prefers text-only
+
+Note: format preferences drive enjoyment and engagement, not learning effectiveness. Formats are matched to _content type_ (vocabulary → audio, processes → sequencing) and to engagement — never presented as "you learn better with X".
 
 **Personalization Actions**:
 
 - Adjust question type distribution
 - Increase/decrease multimedia asset generation
-- Recommend memocard decks for visual learners
-- Suggest listening practice for auditory learners
+- Recommend memocard decks to users with high image engagement
+- Suggest listening practice to users with high audio engagement
 
 ---
 
@@ -850,14 +837,15 @@ CREATE TABLE memocards (
 
 ### 8.1 Performance SLAs
 
-| Metric                                | Target                |
-| ------------------------------------- | --------------------- |
-| Question generation (text-only)       | <200ms                |
-| Question generation (with multimedia) | <2s images, <5s total |
-| TTS audio generation                  | <1s per sentence      |
-| Image loading (CDN)                   | <500ms                |
-| Memocard flip animation               | <100ms                |
-| Session initialization                | <2s                   |
+| Metric                                                          | Target                |
+| --------------------------------------------------------------- | --------------------- |
+| Question serving (from pre-generated buffer)                    | <200ms                |
+| Background question generation (LLM, async, hidden by pipeline) | 1–10s                 |
+| Multimedia asset generation (async)                             | <2s images, <5s total |
+| TTS audio generation                                            | <1s per sentence      |
+| Image loading (CDN)                                             | <500ms                |
+| Memocard flip animation                                         | <100ms                |
+| Session initialization                                          | <2s                   |
 
 ---
 
@@ -922,7 +910,7 @@ CREATE TABLE memocards (
 - ✅ Memocards with text front/back
 - ✅ AI-generated images (for key concepts)
 - ✅ Text-to-speech audio (basic TTS)
-- ✅ SM-2 spaced repetition for memocards
+- ✅ FSRS spaced repetition for memocards
 - ✅ Basic hint system
 - ✅ Session analytics
 

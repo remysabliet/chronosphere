@@ -37,23 +37,16 @@
 
 # 🔹 Step 3: Spaced Repetition Review Workflow
 
-## 🔹 Step A: Scheduled Decay Check (Daily or on Login)
+## 🔹 Step A: Review Due Check (Daily or on Login)
 
-- Scan `mastery_log` for entries where:
-  - `decay_status = 'Active'`
-  - `mastery_date + decay_threshold_days ≤ NOW()`
-- For each match:
-  - Call `apply_decay()` to compute decayed P(Ln)
-  - Update `mastery_log` with new P(Ln)
-  - Set `decay_status = 'Pending review'`
-  - Optionally insert into `review_queue` or flag for dynamic review
+- For each concept–Bloom pair in `mastery_log`, compute the FSRS predicted recall probability from `fsrs_state`
+- If predicted recall < 0.90 (or `next_review_at ≤ NOW()`):
+  - Insert into `review_queue`
+- FSRS predicted recall is the single decay signal — no decay job, no decay-status flags
 
 ## 🔹 Step B: Pre-Session Planning
 
-- Scan `mastery_log` for:
-  - `decay_status IN ('Expired', 'Pending review')`
-  - `last_reinforced + decay_threshold_days ≤ NOW()`
-- Populate `session_review_queue` with concept–Bloom pairs
+- Populate `session_review_queue` from `review_queue`, lowest predicted recall first
 - Present "Memory Refresh" module before new learning begins
 
 ## 🔹 Step C: Review Question Selection
@@ -65,15 +58,14 @@ For each concept–Bloom pair in review queue:
   - `concept_id = Y`
   - `bloom_level = Z`
   - `is_correct = FALSE`
-  - Optional: `decision_type IN ('Advance', 'Reinforce')`
+  - Optional: `decision_type IN ('Advance', 'Practice')`
 - Rank candidates by:
   - Most recent incorrect attempts
   - Highest slip count
   - Longest response time
 - **Fallback**: If no incorrect responses exist, select a fresh question from `questions` using:
   - Matching `concept_id` and `bloom_level`
-  - Moderate `difficulty_b ≈ θ`
-  - High `discrimination_a`
+  - `difficulty_tier = 'medium'`
   - Not recently used
 
 ## 🔹 Step D: Review Execution
@@ -90,14 +82,12 @@ For each concept–Bloom pair in review queue:
 
 For the reviewed concept–Bloom pair:
 
-- Update reinforcement and decay status:
+- Update reinforcement state:
   - `last_reinforced = NOW()`
-  - If `is_correct = TRUE`:
-    - `decay_status = 'Active'`
+  - Update `fsrs_state` and `next_review_at` with the review outcome (correct → longer interval, incorrect → short interval)
   - If `is_correct = FALSE`:
-    - ✅ Call `apply_decay()` again to penalize P(Ln)
-    - `decay_status = 'Expired'`
-    - Optionally downgrade mastery or requeue for remediation
+    - Update P(Ln) via `update_bkt()` (the incorrect answer lowers it)
+    - Downgrade `mastery_status` if P(Ln) falls below the mastery bar; requeue for remediation
 - Update review stats:
   - Increment `review_count`
   - Set `last_review_outcome = 'Correct'` or `'Incorrect'`
@@ -147,6 +137,12 @@ Set initial P(L0) based on exposure:
 - "Practiced" → 0.6
 - "Mastered" → 0.8
 
+### Placement Probe (refines the self-report)
+
+- The first 3 questions of a new thema are served at easy / medium / hard tiers
+- Each answer adjusts P(L0) of the thema's concepts by ±0.1, clamped to [0.1, 0.9]
+- Runs inside the normal session — no extra UI; the adaptive loop takes over from question 4
+
 # 🔹 Step 6: Concept–Bloom Mapping (prompt2)
 
 ## 🧠 Logic Flow
@@ -192,8 +188,17 @@ _See `python-functions.md` for the `initialize_bkt()` function implementation._
 **Prompt 3**: Generate questions using:
 
 - Concept–Bloom pairs
-- IRT metadata: b (difficulty), a (discrimination), c (guessing)
-- Current mastery model: P(Ln) from BKT, θ from IRT
+- Target `difficulty_tier` (easy / medium / hard), proposed by the LLM
+- Current mastery model: P(Ln) from BKT
+
+## 🔹 Generation Pipeline (generate ahead, serve instantly)
+
+Questions are personal to each user and generated ahead of need — never with a live LLM call in the serve path:
+
+- **At session start** (during the session-init screen, ≤2s budget): generate the first questions for the session's concepts in the background
+- **While the user answers question N** (20–60s window): generate candidate next questions for each band the user could land in (Remediate / Practice / Advance)
+- **Serving** = reading an already-generated question from the user's buffer in the `questions` table (<200ms, indexed read)
+- **Buffer empty** (user faster than generator): fall back to a live LLM call with a "preparing your question…" state — the exception, not the norm
 
 ## 🔹 Step 7A: Question Validation
 
@@ -213,9 +218,7 @@ For each generated question, validate:
 #### ✅ Alignment Validation
 
 - **Bloom level**: Matches cognitive demand of question
-- **Difficulty range**: Within expected range for Bloom level
-- **Discrimination**: Positive and reasonable (> 0)
-- **Guessing rate**: Matches question type expectations
+- **Difficulty tier**: Present and one of easy / medium / hard
 
 #### ✅ Technical Validation
 
@@ -242,6 +245,10 @@ _See `python-functions.md` for the `validate_question()` function implementation
   - Identify weak question types from flag reasons
   - Tune Bloom-level difficulty mappings
   - Optimize generation templates based on feedback patterns
+- **Calibrate the generator's difficulty labels** (questions are single-user, so calibration targets the LLM's labeling, not individual questions):
+  - Periodically compute observed correct rates from `user_responses` per concept–tier
+  - Expected: easy ≈ >80% correct, medium ≈ 40–80%, hard ≈ <40%
+  - If a tier drifts (e.g., "easy" questions only 55% correct), adjust the generation prompt or tier mapping
 
 ### Store Results
 
@@ -273,11 +280,10 @@ _See `python-functions.md` for the `validate_question()` function implementation
 
 # 🔹 Step 10: Model Update & Feedback Logging (use python library)
 
-Invoke function `update_irt` and `update_bkt` in order to update:
+Invoke function `update_bkt` in order to update:
 
 - BKT: P(Ln) for concept
-- IRT: θ for concept
-- Store updated values in: `user_concept_mastery` and `user_response` table
+- Store updated value in: `user_concept_mastery` and `user_response` table
 
 **Log feedback data**:
 
@@ -285,7 +291,7 @@ Invoke function `update_irt` and `update_bkt` in order to update:
 - Link feedback to specific `response_id` for audit and tuning
 - Use feedback for question quality improvement
 
-_See `python-functions.md` for the `update_irt()` and `update_bkt()` function implementations._
+_See `python-functions.md` for the `update_bkt()` function implementation._
 
 # 🔹 Step 11: Adaptive Decision Engine
 
@@ -301,30 +307,30 @@ _See `python-functions.md` for the `update_irt()` and `update_bkt()` function im
 - If found:
   - Select the `concept_id` and `bloom_level` from the review entry
   - Set `decision_type = "Review"`
-  - Generate a new question using Prompt 4
+  - Serve a question from the user's pre-generated buffer (generate via Prompt 4 only if the buffer is empty)
   - After response:
     - Update `review_queue.status = "Completed"`
     - Update `mastery_log.last_reinforced = now`
-    - Set `mastery_log.decay_status = "Active"`
+    - Update `fsrs_state` / `next_review_at` with the outcome
 
 ### Otherwise, Use Mastery Signals to Guide Selection
 
-Based on updated BKT + IRT values for each concept–Bloom pair:
+Based on the updated P(Ln) for each concept–Bloom pair. The three bands are exhaustive — every P(Ln) value in [0, 1] has a defined action:
 
-**Reinforce**
+**Remediate** (P(Ln) < 0.40, or repeated slips at any level)
 
-- If P(Ln) < 0.6, select a lower Bloom level and easier item (b < θ)
-- Set `decision_type = "Reinforce"`
-
-**Advance**
-
-- If P(Ln) > 0.9 and θ > 2.5, select a higher Bloom level and harder item (b > θ)
-- Set `decision_type = "Advance"`
-
-**Remediate**
-
-- If repeated slips or low P(Ln) persist, reselect the same concept with adjusted Bloom level or difficulty
+- Select the same concept one Bloom level down (or `difficulty_tier = 'easy'` at the lowest Bloom level); scaffolded hints free
 - Set `decision_type = "Remediate"`
+
+**Practice** (0.40 ≤ P(Ln) ≤ 0.85)
+
+- Select the same concept–Bloom pair, tier matched to P(Ln): < 0.6 → easy, otherwise medium
+- Set `decision_type = "Practice"`
+
+**Advance** (P(Ln) > 0.85)
+
+- Select a higher Bloom level and a harder `difficulty_tier` (or the next weakest concept if the Bloom ladder is done)
+- Set `decision_type = "Advance"`
 
 ### Track Bloom-Level History per Concept
 
@@ -333,8 +339,8 @@ Based on updated BKT + IRT values for each concept–Bloom pair:
 
 ### Skip Mastered Bloom Levels (Unless in Review Mode)
 
-- If a concept–Bloom pair is marked as mastered in `mastery_log` and `decay_status = "Active"`, skip it
-- If `decay_status = "Expired"` or "Pending review", requeue for spaced repetition
+- If a concept–Bloom pair is mastered and its FSRS predicted recall ≥ 0.90, skip it
+- If predicted recall < 0.90, requeue for spaced repetition
 
 # 🔹 Step 12: Session Completion & Analytics
 
@@ -389,23 +395,24 @@ Is the official declaration: "This concept is now mastered. Log it. Show feedbac
 
 ### Generate personalized feedback using:
 
-- P(Ln), θ, Bloom history
+- P(Ln), Bloom history
 - Session performance data
 - Learning progression insights
 
-### Declare concept mastered when:
+### Declare concept–Bloom pair mastered when:
 
-- P(Ln) > 0.9
-- θ > 2.5
-- ≥2 Bloom levels assessed
-- No recent slips
+- P(Ln) ≥ 0.95
+- Last 3 answers on this pair correct without hints
 - Store in: `mastery_log`
 
-### Mastery should expire if not reinforced
+(The 3-clean-answers streak is direct recent evidence; BKT's P(G) already discounts lucky guesses, and the decision bands ensure a high P(Ln) is earned against difficulty-matched questions.)
 
-- Use `mastery_log` to track decay and trigger review
-- Extend BKT to model forgetting
-- This keeps your system adaptive, honest, and pedagogically sound
+### Mastery stays honest over time
+
+- After mastery, the pair lives on the FSRS review calendar
+- FSRS predicted recall probability is the decay signal — it drives review priority and dashboard "fading" indicators
+- A failed review lowers P(Ln) via `update_bkt()` and can downgrade mastery
+- This keeps the system adaptive, honest, and pedagogically sound
 
 ---
 

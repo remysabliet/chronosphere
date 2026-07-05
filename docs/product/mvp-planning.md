@@ -207,14 +207,12 @@ const MVP_FEATURES = [
 - **BKT Algorithm Implementation** (16-24 hours)
   - Implement `update_bkt()` function from `python-functions.md`
   - Create mastery tracking system
-  - Build decay logic for spaced repetition
   - Implement mastery declaration logic
 
-- **IRT Algorithm Implementation** (16-24 hours)
-  - Implement `update_irt()` function from `python-functions.md`
-  - Create ability estimation system
-  - Build difficulty calibration
-  - Implement adaptive question selection
+- **FSRS Scheduling & Difficulty Calibration** (8-16 hours)
+  - Integrate `py-fsrs` library (review scheduling + predicted recall as the decay signal)
+  - Build the generator-calibration check (LLM tier labels vs. observed correct rates per concept–tier)
+  - Implement adaptive question selection (decision bands + tier matching)
 
 - **Adaptive Decision Engine** (8-12 hours)
   - Create decision logic for question selection

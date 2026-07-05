@@ -15,10 +15,8 @@ def validate_question(question: dict) -> dict:
             - correct_answer: The correct answer
             - options: List of answer options
             - bloom_level: Bloom taxonomy level
-            - difficulty_b: IRT difficulty parameter
-            - discrimination_a: IRT discrimination parameter
+            - difficulty_tier: "easy", "medium" or "hard" (proposed by the LLM)
             - question_type: Type of question (e.g., "4-option MCQ")
-            - guessing_c: IRT guessing parameter
             - language: Question language
 
     Returns:
@@ -42,15 +40,9 @@ def validate_question(question: dict) -> dict:
     if not bloom_supported(question['bloom_level'], concept_id):
         validation_result["failed_checks"].append("Bloom level not supported")
 
-    if not difficulty_in_range(question['difficulty_b'], question['bloom_level']):
-        validation_result["failed_checks"].append("Difficulty out of range")
-
     # Technical checks
-    if not discrimination_valid(question['discrimination_a']):
-        validation_result["failed_checks"].append("Invalid discrimination")
-
-    if not guessing_valid(question['question_type'], question['guessing_c']):
-        validation_result["failed_checks"].append("Invalid guessing rate")
+    if question['difficulty_tier'] not in ('easy', 'medium', 'hard'):
+        validation_result["failed_checks"].append("Invalid difficulty tier")
 
     # Determine final status
     if validation_result["failed_checks"]:
@@ -99,46 +91,18 @@ def update_bkt(P_Ln, P_T, P_G, P_S, response_score, bloom_weight=1.0, skipped=Fa
     return round(P_Ln_plus_1, 4)
 ```
 
-## IRT Update Function
+## Response Score Mapping
 
-```python
-import math
+All evidence enters `update_bkt()` as a `response_score` in [0, 1] — nothing adjusts P(Ln) directly:
 
-def update_irt(theta, a, b, c, response_score, response_time=None, attempt_number=1, skipped=False):
-    """
-    Updates learner ability estimate (θ) using 3PL IRT model.
+| Evidence                | response_score |
+| ----------------------- | -------------- |
+| Correct, no hints       | 1.0            |
+| Correct with hint(s)    | 0.5            |
+| Incorrect               | 0.0            |
+| Memocard rating "Easy"  | 1.0            |
+| Memocard rating "Good"  | 0.8            |
+| Memocard rating "Hard"  | 0.4            |
+| Memocard rating "Again" | 0.0            |
 
-    Parameters:
-    - theta: Current ability estimate
-    - a, b, c: IRT parameters (discrimination, difficulty, guessing)
-    - response_score: 0-1 (1=correct, 0=incorrect, 0.5=partial)
-    - response_time: Time to answer (seconds)
-    - attempt_number: 1=first try, >1=retries
-    - skipped: True if question skipped
-
-    Returns:
-    - Updated ability estimate (theta, float)
-    """
-    if skipped:
-        return round(theta, 4)
-
-    # Dynamic learning rate
-    learning_rate = 0.1
-    if response_time is not None:
-        if attempt_number == 1:
-            learning_rate *= 1 + max(0, (20 - response_time)/20)  # faster → higher rate
-        else:
-            learning_rate *= 0.5  # retries learn less
-
-    # 3PL probability
-    def prob_correct(theta, a, b, c):
-        return c + (1 - c) / (1 + math.exp(-a * (theta - b)))
-
-    p = prob_correct(theta, a, b, c)
-    error = response_score - p
-    theta_new = theta + learning_rate * error
-
-    # Clamp θ to [-3, +3] (standard IRT range)
-    theta_new = min(max(theta_new, -3.0), 3.0)
-    return round(theta_new, 4)
-```
+Audio replays and multimedia engagement are tracked for personalization but never affect P(Ln).

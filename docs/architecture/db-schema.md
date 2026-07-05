@@ -108,9 +108,7 @@ CREATE TABLE questions (
 id UUID PRIMARY KEY,
 concept_id UUID NOT NULL,
 bloom_level TEXT NOT NULL,
-difficulty_b FLOAT,
-discrimination_a FLOAT,
-guessing_c FLOAT,
+difficulty_tier TEXT DEFAULT 'medium',
 question_type TEXT,
 question_text TEXT NOT NULL,
 options JSON,
@@ -127,9 +125,12 @@ created_at DATETIME NOT NULL
 
 -- Indexes for questions
 CREATE INDEX idx_questions_concept_bloom ON questions(concept_id, bloom_level);
-CREATE INDEX idx_questions_difficulty ON questions(difficulty_b);
+CREATE INDEX idx_questions_tier ON questions(concept_id, bloom_level, difficulty_tier);
 
 -- Constraints for questions
+ALTER TABLE questions ADD CONSTRAINT chk_questions_difficulty_tier
+CHECK (difficulty_tier IN ('easy', 'medium', 'hard'));
+
 ALTER TABLE questions ADD CONSTRAINT fk_questions_concept
 FOREIGN KEY (concept_id) REFERENCES learning_units(id) ON DELETE CASCADE;
 
@@ -208,7 +209,7 @@ CREATE INDEX idx_user_responses_session_id ON user_responses(session_id);
 
 -- Constraints for user_responses
 ALTER TABLE user_responses ADD CONSTRAINT chk_decision_type
-CHECK (decision_type IN ('Review', 'Reinforce', 'Advance', 'Remediate'));
+CHECK (decision_type IN ('Review', 'Practice', 'Advance', 'Remediate'));
 
 ALTER TABLE user_responses ADD CONSTRAINT chk_confidence_level
 CHECK (confidence_level IN ('Low', 'Medium', 'High'));
@@ -235,36 +236,28 @@ thema TEXT NOT NULL,
 topic TEXT,
 mastery_date DATETIME NOT NULL,
 P_Ln_at_mastery FLOAT NOT NULL,
-theta_at_mastery FLOAT NOT NULL,
 bloom_levels_assessed TEXT[] NOT NULL,
 slip_count_recent INT DEFAULT 0,
 decision_type TEXT NOT NULL,
 feedback_text TEXT,
 last_reinforced DATETIME,
-decay_threshold_days INT DEFAULT 14,
-decay_status TEXT DEFAULT 'Active',
+fsrs_state JSON, -- FSRS memory state; predicted recall is the decay signal
+next_review_at DATETIME,
 mastery_status TEXT DEFAULT 'In Progress',
 review_count INT DEFAULT 0,
 last_review_outcome TEXT,
 slip_rate FLOAT DEFAULT 0.0,
 version TEXT,
 author TEXT DEFAULT 'AI-generated',
-decay_magnitude FLOAT,
-last_decay_applied_at DATE,
 usage_stats JSON,
 PRIMARY KEY (user_id, concept_id, bloom_level)
 );
 
 -- Indexes for mastery_log
 CREATE INDEX idx_mastery_log_user_concept_bloom ON mastery_log(user_id, concept_id, bloom_level);
-CREATE INDEX idx_mastery_log_decay_status ON mastery_log(decay_status);
-CREATE INDEX idx_mastery_log_last_decay ON mastery_log(last_decay_applied_at);
-CREATE INDEX idx_mastery_log_decay_reinforced ON mastery_log(decay_status, last_reinforced);
+CREATE INDEX idx_mastery_log_next_review ON mastery_log(user_id, next_review_at);
 
 -- Constraints for mastery_log
-ALTER TABLE mastery_log ADD CONSTRAINT chk_decay_status
-CHECK (decay_status IN ('Active', 'Expired', 'Pending review'));
-
 ALTER TABLE mastery_log ADD CONSTRAINT chk_mastery_status
 CHECK (mastery_status IN ('In Progress', 'Mastered', 'Expired'));
 
@@ -352,7 +345,7 @@ question_id UUID NOT NULL,
 outcome TEXT NOT NULL,
 response_time INT,
 timestamp DATETIME NOT NULL,
-decay_trigger TEXT,
+review_trigger TEXT, -- what queued this review (e.g., 'low predicted recall')
 source TEXT,
 notes TEXT,
 version TEXT,
@@ -377,7 +370,7 @@ CREATE TABLE question_validation_log (
 id UUID PRIMARY KEY,
 question_id UUID,
 validation_status TEXT NOT NULL, -- "Passed", "Failed"
-failed_checks TEXT[], -- e.g., ["Missing explanation", "Invalid guessing_c"]
+failed_checks TEXT[], -- e.g., ["Missing explanation", "Invalid difficulty tier"]
 timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
 notes TEXT,
 validation_score FLOAT, -- Overall validation score (0.0 to 1.0)
@@ -444,44 +437,6 @@ INSERT INTO bkt_parameter_defaults (complexity_level, P_T, P_L0, P_G, P_S) VALUE
 ('Low', 0.25, 0.2, 0.25, 0.1),
 ('Medium', 0.15, 0.2, 0.25, 0.1),
 ('High', 0.05, 0.2, 0.25, 0.1);
-
-CREATE TABLE irt_bloom_defaults (
-bloom_level TEXT PRIMARY KEY, -- "Remembering", "Applying", etc.
-difficulty_b_min FLOAT NOT NULL,
-difficulty_b_max FLOAT NOT NULL,
-discrimination_a_min FLOAT NOT NULL,
-discrimination_a_max FLOAT NOT NULL
-);
-
-INSERT INTO irt_bloom_defaults (
-bloom_level,
-difficulty_b_min,
-difficulty_b_max,
-discrimination_a_min,
-discrimination_a_max
-) VALUES
-('Remembering', -2.0, -0.5, 0.5, 0.7),
-('Understanding', -1.0, 0.5, 0.6, 0.8),
-('Applying', 0.0, 1.5, 0.8, 1.0),
-('Analyzing', 0.5, 2.0, 1.0, 1.2),
-('Evaluating', 1.0, 2.5, 1.2, 1.4),
-('Creating', 1.5, 3.0, 1.3, 1.5);
-
-CREATE TABLE irt_guessing_defaults (
-question_type TEXT PRIMARY KEY, -- e.g., "4-option MCQ", "Short Answer"
-guessing_c FLOAT NOT NULL
-);
-
-INSERT INTO irt_guessing_defaults (question_type, guessing_c) VALUES
-('2-option MCQ', 0.5),
-('3-option MCQ', 0.33),
-('4-option MCQ', 0.25),
-('5-option MCQ', 0.20),
-('True/False', 0.5),
-('Fill-in-the-Blank', 0.1),
-('Short Answer', 0.05),
-('Matching', 0.15),
-('Open-ended', 0.01);
 
 CREATE TABLE bloom_level_weights (
 bloom_level TEXT PRIMARY KEY, -- e.g., "Remembering", "Applying"

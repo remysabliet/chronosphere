@@ -129,7 +129,7 @@ Generates questions using AI (Prompt 3), assigns IRT metadata, and runs validati
 **Services:**
 
 - Quiz Session Service → Delivers questions, logs responses, tracks session stats
-- Learning Engine Service → Updates BKT (P(Ln)) and IRT (θ) based on learner performance
+- Learning Engine Service → Updates BKT (P(Ln)) based on learner performance
 
 ---
 

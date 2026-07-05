@@ -1,5 +1,6 @@
 line-length = 100
 target-version = "py313"
+extend-exclude = ["*/migrations/*", ".venv", "__pycache__"]
 
 [lint]
 select = [
@@ -23,6 +24,3 @@ known-first-party = [
 [format]
 quote-style = "double"
 indent-style = "space"
-
-[exclude]
-extend = ["*/migrations/*", ".venv", "__pycache__"]

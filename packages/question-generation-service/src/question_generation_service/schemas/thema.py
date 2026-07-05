@@ -1,20 +1,20 @@
-from typing import Literal, Optional, Union
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
 
 
 class LearnerContext(BaseModel):
-    profession: Optional[str] = None
-    education_level: Optional[str] = None
+    profession: str | None = None
+    education_level: str | None = None
     prior_themas: list[str] = Field(default_factory=list)
 
 
 class ThemaRequest(BaseModel):
     # Beyond ~10k chars the AI struggles to extract a single coherent Thema anyway.
     raw_user_input: str = Field(min_length=2, max_length=10000)
-    content_body: Optional[str] = Field(default=None, max_length=50000)
-    learner_context: Optional[LearnerContext] = None
+    content_body: str | None = Field(default=None, max_length=50000)
+    learner_context: LearnerContext | None = None
 
 
 class ThemaCandidate(BaseModel):
@@ -51,11 +51,25 @@ class UnresolvedThema(BaseModel):
     extraction_id: UUID
 
 
-ThemaExtractionResult = Union[ResolvedThema, AmbiguousThema, UnresolvedThema]
+NonTopicKind = Literal["greeting_or_chitchat", "meta_question", "unintelligible"]
+
+
+class NonTopicInput(BaseModel):
+    """The learner's message was not a study topic (e.g. a greeting to the wizard)."""
+
+    status: Literal["non_topic"] = "non_topic"
+    extraction_id: UUID
+    input_kind: NonTopicKind
+    # Short in-character wizard reply generated in the same LLM call; the client
+    # may fall back to a canned line when empty.
+    reply: str = ""
+
+
+ThemaExtractionResult = ResolvedThema | AmbiguousThema | UnresolvedThema | NonTopicInput
 
 
 class ConfirmRequest(BaseModel):
-    chosen_rank: Optional[int] = Field(default=None, ge=1)
+    chosen_rank: int | None = Field(default=None, ge=1)
 
 
 class RefineRequest(BaseModel):

@@ -19,6 +19,8 @@ DOMAINS = [
 
 MAX_ALTERNATES = 2
 
+INPUT_KINDS = ["topic", "greeting_or_chitchat", "meta_question", "unintelligible"]
+
 _INTERPRETATION_SCHEMA = {
     "type": "object",
     "properties": {
@@ -45,11 +47,16 @@ self-assessed confidence and, if the input is genuinely ambiguous, up to {max_al
 alternate interpretations.
 
 Output a single JSON object with:
+- "input_kind": exactly one of {input_kinds} — see RULE 0
+- "reply": for non-"topic" inputs only: ONE short, warm sentence answering the
+  learner in character as a friendly quiz wizard — see RULE 0. Empty string ""
+  when input_kind is "topic".
 - "thema": canonical subject domain (Title Case, singular, no punctuation)
 - "domain": exactly one of {domains}
 - "disambiguator": <=6 words naming what tells this reading apart from others
 - "confirmation": one plain-language sentence a learner can verify at a glance,
-  naming the scope and, where useful, what is excluded
+  naming the scope; mention exclusions only when they resolve a real ambiguity
+  with a competing reading
 - "topics": 3 to 7 distinct, non-overlapping subtopics a learner would expect and
   want to be quizzed on for this thema — see RULE 5, count is not a target
 - "confidence": your own honest probability (0.0-1.0) that this is the reading the
@@ -59,6 +66,25 @@ Output a single JSON object with:
   empty array if the input is not genuinely ambiguous
 
 RULES:
+0. FIRST decide whether the input actually describes something to learn.
+   Messages addressed to YOU are not study topics: greetings and small talk
+   ("hey", "hello", "thanks", "how are you") -> "greeting_or_chitchat";
+   questions about the assistant or the app ("what can you do?") -> "meta_question";
+   random characters or empty noise -> "unintelligible".
+   A bare greeting word is chit-chat BY DEFAULT — treat greeting words as a topic
+   only when the message makes the learning intent explicit ("teach me greetings",
+   "how to say hello in Spanish").
+   For any non-"topic" input_kind: set thema "None", domain "General",
+   disambiguator "", confirmation "", topics [], confidence 0, alternates [],
+   and write "reply" as a natural response to what they actually said:
+   - a greeting -> greet back briefly and invite a subject
+   - "let me think" / "give me a sec" -> acknowledge, no rush, you'll be here
+   - thanks/appreciation -> you're welcome, offer to keep going
+   - a question about you or the app -> answer it in one sentence (you turn any
+     subject or pasted text into an adaptive quiz), then invite a subject
+   - unintelligible -> gently say you didn't catch that and ask for a subject
+   Write the reply fresh for the specific message — never a stock sentence.
+   Only when input_kind is "topic" do the rules below apply.
 1. Collapse synonyms/rephrasings into one canonical thema
    ("how plants make food" -> "Photosynthesis").
 2. If a CONTENT BODY is provided it is AUTHORITATIVE: derive the thema from it and
@@ -84,13 +110,20 @@ RULES:
    - Commit to ONE decisive thema with confidence >= 0.9 and an empty "alternates" —
      the learner already disambiguated once, so treat the case as closed rather
      than reopening the same ambiguity you would flag for a bare keyword.
+   - EXCEPTION: if the CLARIFICATION line is itself a greeting or chit-chat rather
+     than a topic-like correction, classify it per RULE 0 (input_kind) instead of
+     forcing a decisive thema.
 7. Calibrate honestly: confidence is a probability, not an enthusiasm score. If two
    readings are both plausible, the top pick's confidence should reflect that split
    (e.g. ~0.5-0.6 each, not 0.9), and you must list the other reading as an alternate.
    Reserve confidence >= 0.85 for cases with no serious competing reading.
 
 OUTPUT: strict JSON only — no explanation, no markdown, no extra text.
-""".format(domains=", ".join(DOMAINS), max_alternates=MAX_ALTERNATES)
+""".format(
+    domains=", ".join(DOMAINS),
+    max_alternates=MAX_ALTERNATES,
+    input_kinds=", ".join(f'"{k}"' for k in INPUT_KINDS),
+)
 
 PROMPT_1_CONFIG = CompletionConfig(
     model=get_settings().MISTRAL_MODEL,
@@ -107,6 +140,14 @@ PROMPT_1_CONFIG = CompletionConfig(
                 "type": "object",
                 "properties": {
                     **_INTERPRETATION_SCHEMA["properties"],
+                    "input_kind": {"type": "string", "enum": INPUT_KINDS},
+                    "reply": {"type": "string"},
+                    # Non-topic inputs return an empty topics list; alternates keep
+                    # the 3-item floor since they are always real interpretations.
+                    "topics": {
+                        **_INTERPRETATION_SCHEMA["properties"]["topics"],
+                        "minItems": 0,
+                    },
                     "alternates": {
                         "type": "array",
                         "items": _INTERPRETATION_SCHEMA,
@@ -114,7 +155,12 @@ PROMPT_1_CONFIG = CompletionConfig(
                         "maxItems": MAX_ALTERNATES,
                     },
                 },
-                "required": [*_INTERPRETATION_SCHEMA["required"], "alternates"],
+                "required": [
+                    *_INTERPRETATION_SCHEMA["required"],
+                    "input_kind",
+                    "reply",
+                    "alternates",
+                ],
                 "additionalProperties": False,
             },
         ),

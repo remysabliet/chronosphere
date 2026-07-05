@@ -18,6 +18,8 @@ from question_generation_service.schemas.concept import ConceptMapRequest
 from question_generation_service.schemas.thema import (
     AmbiguousThema,
     ConfirmRequest,
+    NonTopicInput,
+    NonTopicKind,
     RefineRequest,
     ResolvedThema,
     ThemaCandidate,
@@ -67,6 +69,7 @@ class _NotesPayload(_NotesPayloadBase, total=False):
     parent_extraction_id: str
     superseded_by: str
     chosen: _ChosenCandidate
+    input_kind: NonTopicKind
 
 
 class _ResolvedFields(TypedDict):
@@ -156,6 +159,25 @@ class ThemaService:
             user_msg=llm_user_msg,
             config=PROMPT_1_CONFIG,
         )
+        input_kind = response["input_kind"]
+        if input_kind != "topic":
+            notes: _NotesPayload = {
+                "status": "non_topic",
+                "candidates": [],
+                "input_kind": input_kind,
+            }
+            entry = await self.repository.save(
+                raw_user_input=raw_user_input,
+                extracted_thema="None",
+                extracted_topic="",
+                extraction_model=PROMPT_1_CONFIG.model,
+                extraction_confidence=0.0,
+                notes=json.dumps(notes),
+            )
+            return NonTopicInput(
+                extraction_id=entry.id, input_kind=input_kind, reply=response["reply"]
+            )
+
         candidates = _to_candidates(response)
         decision = self._decide(candidates, is_refine=parent_extraction_id is not None)
         top = candidates[0]
@@ -214,6 +236,11 @@ class ThemaService:
             parent_extraction_id=extraction_id,
         )
 
+        # A chit-chat "clarification" resolves nothing — keep the parent alive so
+        # the learner can still disambiguate or refine it afterwards.
+        if isinstance(result, NonTopicInput):
+            return result
+
         superseded_notes: _NotesPayload = json.loads(entry.notes)
         superseded_notes["status"] = "superseded"
         superseded_notes["superseded_by"] = str(result.extraction_id)
@@ -231,6 +258,8 @@ class ThemaService:
             raise ConflictError("This extraction has already been confirmed")
         if data["status"] == "superseded":
             raise ConflictError("This extraction was refined — confirm the newer one instead")
+        if data["status"] == "non_topic":
+            raise InvalidInputError("Nothing to confirm — the input was not a study topic")
         candidates = data["candidates"]
 
         chosen, corrected, correction, confidence, confirmation, domain = self._pick(

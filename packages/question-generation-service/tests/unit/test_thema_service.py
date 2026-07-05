@@ -4,7 +4,11 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from question_generation_service.core.exceptions import ConflictError, NotFoundError
+from question_generation_service.core.exceptions import (
+    ConflictError,
+    InvalidInputError,
+    NotFoundError,
+)
 from question_generation_service.repositories.thema_repository import (
     ThemaEntryProtocol,
 )
@@ -12,6 +16,7 @@ from question_generation_service.schemas.concept import ConceptMapRequest, Conce
 from question_generation_service.schemas.thema import (
     AmbiguousThema,
     ConfirmRequest,
+    NonTopicInput,
     RefineRequest,
     ResolvedThema,
     ThemaRequest,
@@ -37,8 +42,21 @@ def _response(
     topics: list[str],
     confidence: float,
     alternates: list[dict[str, object]] | None = None,
+    input_kind: str = "topic",
+    reply: str = "",
 ) -> dict[str, object]:
-    return {**_alt(thema, domain, topics, confidence), "alternates": alternates or []}
+    return {
+        **_alt(thema, domain, topics, confidence),
+        "alternates": alternates or [],
+        "input_kind": input_kind,
+        "reply": reply,
+    }
+
+
+def _non_topic_response(
+    input_kind: str, reply: str = "Hi! What shall we learn?"
+) -> dict[str, object]:
+    return _response("None", "General", [], confidence=0.0, input_kind=input_kind, reply=reply)
 
 
 class _SavedKwargs(TypedDict):
@@ -213,6 +231,47 @@ async def test_unresolved_when_scattered(monkeypatch):
     result = await service.extract(ThemaRequest(raw_user_input="asdf"))
 
     assert isinstance(result, UnresolvedThema)
+
+
+@pytest.mark.asyncio
+async def test_greeting_returns_non_topic(monkeypatch):
+    _patch_response(monkeypatch, _non_topic_response("greeting_or_chitchat"))
+    repo = FakeThemaRepository()
+    service = _service(repo)
+
+    result = await service.extract(ThemaRequest(raw_user_input="hey"))
+
+    assert isinstance(result, NonTopicInput)
+    assert result.input_kind == "greeting_or_chitchat"
+    assert result.reply == "Hi! What shall we learn?"
+    assert repo.saved is not None
+    assert json.loads(repo.saved["notes"])["status"] == "non_topic"
+
+
+@pytest.mark.asyncio
+async def test_chitchat_clarification_does_not_supersede(monkeypatch):
+    entry = FakeEntry(
+        notes=json.dumps({"status": "pending_disambiguation", "candidates": []}),
+        raw_user_input="hey",
+    )
+    repo = FakeThemaRepository(entry)
+    _patch_response(monkeypatch, _non_topic_response("greeting_or_chitchat"))
+    service = _service(repo)
+
+    result = await service.refine(entry.id, RefineRequest(clarification="Hello"))
+
+    assert isinstance(result, NonTopicInput)
+    assert entry.notes is not None
+    assert json.loads(entry.notes)["status"] == "pending_disambiguation"
+
+
+@pytest.mark.asyncio
+async def test_confirm_rejects_non_topic():
+    entry = FakeEntry(notes=json.dumps({"status": "non_topic", "candidates": []}))
+    service = _service(FakeThemaRepository(entry))
+
+    with pytest.raises(InvalidInputError):
+        await service.confirm(entry.id, ConfirmRequest())
 
 
 @pytest.mark.asyncio

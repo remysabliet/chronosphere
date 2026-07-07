@@ -8,20 +8,36 @@ This document describes what needs to be developed for the `question-generation-
 
 The service is responsible for:
 
-1. **Thema & Concept Analysis**
-   - Turn raw user text into a normalized `thema` + `topics`.
-   - Generate thema and their possible topics
+1. **Thema & Concept Analysis** — DONE
+   - Turn raw user text into a normalized `thema` + `topics` (Prompt 1).
+   - Map thema/topics to atomic concept–Bloom pairs (Prompt 2), reusing
+     already-mapped concepts for a thema instead of re-generating them —
+     Prompt 1 canonicalizes thema/topic text, so the same real-world subject
+     always produces the same strings across different users.
 
-2. **Question Generation & Validation**
-   - Generate questions from concept–Bloom pairs using Mistral.
-   - Attach IRT-like metadata (difficulty, discrimination, guessing).
-   - Validate questions and log validation results.
+2. **Exposure Check & BKT Initialization** — DONE
+   - Look up prior exposure for (user, thema); if unknown, ask the learner
+     and seed P(L0) accordingly.
+   - Initialize `concept_progress_tracker` (P(Ln) = P(L0)) per concept–Bloom
+     pair once exposure is known (`main-workflow.md` Steps 5 & 7).
 
-3. **Question Retrieval & Feedback**
-   - Provide read access to stored questions.
+3. **Question Generation & Validation** — DONE
+   - Generate a batch of questions per concept–Bloom–tier bucket using
+     Mistral (Prompt 3), shared across every learner who reaches that bucket
+     (no `user_id`/`session_id` on `questions` — see main-workflow.md Step 8).
+   - Deterministic structural validation (options well-formed, answer present,
+     etc.) plus an independent LLM judge (Prompt 4) that re-derives its own
+     answer and checks Bloom/concept alignment, rather than trusting the
+     generator's self-reported correctness.
+   - Log every validation outcome — passed, warned, and dropped — to
+     `question_validation_log`.
+
+4. **Question Retrieval & Feedback** — NOT STARTED
+   - Provide read access to stored questions (e.g. `GET /v1/questions/{id}`
+     for `quiz-session-service` to fetch by ID).
    - Accept user feedback (ratings, flags) for quality improvement.
 
-4. **Moderation & Quality Monitoring**
+5. **Moderation & Quality Monitoring** — NOT STARTED
    - Expose lists of flagged/failed questions for moderators.
    - Allow moderators to change question status (approved/rejected/disabled).
 
@@ -38,127 +54,90 @@ The service is responsible for:
 
 ---
 
-### 2.2 Thema & Concept Analysis
+### 2.2 Thema, Concept, and Exposure — DONE (actual shapes below)
 
 - **POST `/v1/thema/extract`** (Prompt 1)
-  - **Purpose**: Convert raw user input into a canonical `{ thema, topic }`.
-  - **Request body**:
-    ```json
-    {
-      "text": "string",
-      "language": "string (optional)"
-    }
-    ```
-  - **Response body**:
-    ```json
-    {
-      "thema": "string",
-      "topic": "string",
-      "normalized_input": "string"
-    }
-    ```
+  - **Request**: `{ "raw_user_input": "string", "content_body": "string?", "learner_context": {...}? }`
+  - **Response**: one of `ResolvedThema` / `AmbiguousThema` / `UnresolvedThema` / `NonTopicInput`
+    (discriminated by `status`) — see `schemas/thema.py`.
+
+- **POST `/v1/thema/{id}/refine`**
+  - **Purpose**: Re-interpret with a learner clarification when the first extraction
+    was ambiguous/unresolved. Same response union as `extract`.
+
+- **POST `/v1/thema/{id}/confirm`**
+  - **Purpose**: Lock in the resolved thema. Internally, in one call: maps concepts
+    for any topic not already mapped for this thema (Prompt 2 — reuses existing
+    `learning_units` rows for topics someone already mapped), then checks
+    `user_thema_exposure` for this user+thema.
+  - **Response**: `ResolvedThema`, with `exposure_required: bool` — true means the
+    client must ask the learner and call the exposure endpoint below before BKT
+    is initialized.
+
+- **POST `/v1/thema/{id}/exposure`**
+  - **Purpose**: Submit the learner's self-reported exposure level
+    (`Unseen`/`Recognized`/`Practiced`/`Mastered`) when `confirm()` didn't already
+    have one on file. Seeds P(L0) and initializes `concept_progress_tracker` for
+    every concept–Bloom pair under that thema (Step 7).
+  - **Response**: `ExposureResult` (`thema`, `exposure_level`, `p_l0`, `concepts_initialized`).
 
 - **POST `/v1/concepts/map`** (Prompt 2)
-  - **Purpose**: Produce atomic concepts, Bloom levels, and quiz-planning metadata
-    (`learning_goal`, `estimated_time_minutes`, `complexity_level`) for a thema's topics,
-    and persist them to `learning_units`.
-  - **Trigger**: called **internally by `ThemaService.confirm()`**, not by the client —
-    once a learner confirms their thema+topics, the backend maps concepts for all
-    topics in one call before marking the extraction confirmed. If concept mapping
-    fails, the extraction is left in its pre-confirm state so the client can retry
-    `confirm()` rather than ending up "confirmed" with no concepts. The HTTP endpoint
-    still exists for standalone/admin use (e.g. re-mapping, moderation tooling).
-  - **Request body**:
+  - Standalone/admin entry point to the same concept mapper `confirm()` calls
+    internally — useful for re-mapping or moderation tooling, not part of the
+    normal learner flow.
+
+---
+
+### 2.3 Question Generation & Validation — mostly DONE, retrieval still missing
+
+- **POST `/v1/questions/generate`** — DONE (Prompt 3 + Step 8A + Prompt 4 judge, store, return)
+  - **Purpose**: Generate one batch (`BATCH_SIZE = 5`) of questions for a single
+    concept–Bloom–tier bucket, run structural validation, then run an independent
+    judge pass on the survivors (re-derives its own answer, checks Bloom/concept
+    alignment — never shown the draft's stated answer), store only what passes
+    both, and log every outcome (including dropped drafts, `question_id = NULL`)
+    to `question_validation_log`.
+  - **Request body** (`QuestionGenerationRequest`):
     ```json
     {
-      "thema": "string",
-      "topics": ["string"],
-      "learner_context": { "profession": "string", "education_level": "string" } // optional
+      "concept_id": "uuid",
+      "concept_name": "string",
+      "learning_goal": "string",
+      "bloom_level": "Remembering" | "Understanding" | "Applying" | "Analyzing" | "Evaluating" | "Creating",
+      "difficulty_tier": "easy" | "medium" | "hard"
     }
     ```
-  - **Response body**:
+  - **Response body** (`QuestionBatchResponse`):
     ```json
     {
-      "thema": "string",
-      "concepts": [
+      "concept_id": "uuid",
+      "bloom_level": "string",
+      "difficulty_tier": "string",
+      "questions": [
         {
           "id": "uuid",
-          "topic": "string",
-          "concept": "string",
-          "learning_goal": "string",
-          "bloom_levels": ["Remembering", "Understanding", "..."],
-          "estimated_time_minutes": 15,
-          "complexity_level": "Low" | "Medium" | "High"
+          "question_type": "MCQ" | "MCQMultiSelect" | "TrueFalse" | "FillInBlank",
+          "question_text": "string",
+          "options": ["string"] | null,
+          "correct_answers": ["string"],
+          "explanation": "string",
+          "estimated_time_seconds": 30,
+          "tags": ["string"],
+          "validation_status": "Passed" | "Warning"
         }
       ]
     }
     ```
+  - There is no separate `/v1/questions/validate` endpoint — validation isn't a
+    standalone callable step, it's an inseparable part of `generate`.
+  - No IRT metadata (`difficulty_b`/`discrimination_a`/`guessing_c`) — that was
+    replaced by the simpler `difficulty_tier` label (see
+    `docs/product/adaptive-engine-review.md`, point 3).
 
----
-
-### 2.3 Question Generation & Validation
-
-- **POST `/v1/questions/generate`** (Prompt 3 + store + validation)
-  - **Purpose**:
-    - Generate `N` questions for given concept–Bloom pairs using Mistral.
-    - Attach IRT-style metadata.
-    - Validate each question.
-    - Store valid questions in the database and return them.
-  - **Minimal request body**:
-    ```json
-    {
-      "thema": "string",
-      "topic": "string",
-      "concept_bloom": [{ "concept": "string", "bloom_level": "string" }],
-      "question_types": ["mcq", "true_false", "fill_blank"],
-      "count": 10,
-      "language": "string (optional)",
-      "user_context": { "profile": "..." } // optional
-    }
-    ```
-  - **Response body**:
-    ```json
-    {
-      "questions": [
-        /* QuestionDTO[] */
-      ],
-      "validation": {
-        "passed": 0,
-        "failed": 0
-      }
-    }
-    ```
-
-- **POST `/v1/questions/validate`**
-  - **Purpose**: Validate a question payload (same logic as `validate_question()` in docs) and log to `question_validation_log`.
-  - **Request body**:
-    ```json
-    {
-      "question": {
-        /* QuestionDTO */
-      }
-    }
-    ```
-  - **Response body**:
-    ```json
-    {
-      "status": "passed" | "failed" | "warning",
-      "score": 0.0,
-      "failed_checks": ["string"]
-    }
-    ```
-
-- **GET `/v1/questions/{question_id}`**
-  - **Purpose**: Return a stored question so other services (e.g. `quiz-session-service`) can fetch it by ID.
-  - **Response body**:
-    ```json
-    {
-      /* QuestionDTO */
-    }
-    ```
-
-> **QuestionDTO (conceptual)**  
-> Fields should align with the `questions` table (stem, options, correct answer, explanation, concept_id, bloom_level, difficulty_b, discrimination_a, guessing_c, language, etc.).
+- **GET `/v1/questions/{question_id}`** — **NOT STARTED, next step**
+  - **Purpose**: Return a stored question by ID so `quiz-session-service` (still
+    an empty stub) can fetch what to serve. Nothing outside this service can
+    read `questions` yet.
 
 ---
 
@@ -229,19 +208,32 @@ The service is responsible for:
 
 ## 4. Implementation Order (Recommended)
 
-1. **Basic service + health**
-   - Implement `FastAPI` app + `/health`.
-2. **Thema & concept endpoints** — DONE
-   - `/v1/thema/extract` (+ `refine`, `confirm`) and `/v1/concepts/map`.
-   - `ThemaService.confirm()` calls concept mapping internally once a learner
-     confirms their thema/topics — see §2.2 for the trigger/failure semantics.
-3. **Question generation (stubbed)**
-   - `/v1/questions/generate` returning mocked questions with correct schema.
-4. **Validation logic + logging**
-   - `/v1/questions/validate` and logging to DB (or stub).
-5. **Feedback endpoint**
+1. **Basic service + health** — DONE
+2. **Thema, concept, exposure & BKT init** — DONE
+   - `/v1/thema/extract` (+ `refine`, `confirm`), `/v1/thema/{id}/exposure`,
+     `/v1/concepts/map`. `confirm()` maps concepts (reusing existing ones per
+     thema/topic) and checks exposure in one call; BKT init runs immediately
+     if exposure is already known, otherwise after the exposure endpoint.
+3. **Question generation + validation + judge** — DONE
+   - `/v1/questions/generate`: Prompt 3, deterministic Step 8A checks, and an
+     independent Prompt 4 judge (re-derives its own answer/checks alignment,
+     never shown the draft's stated answer) before storing.
+   - Covered by 126 unit tests + integration tests against a real Postgres
+     instance + a gated live-AI test (`RUN_LIVE_MISTRAL_TESTS=1`) that hits
+     the real Mistral API and prints generated content for manual review.
+4. **`GET /v1/questions/{question_id}`** — **NOT STARTED, next step**
+   - Nothing outside this service can read a stored question yet;
+     `quiz-session-service` needs this to serve anything at all.
+5. **Feedback endpoint** — NOT STARTED
    - `/v1/questions/{question_id}/feedback` inserting into `question_feedback_log`.
-6. **Moderation endpoints**
-   - Implement listing and status update endpoints using the DB.
+6. **Moderation endpoints** — NOT STARTED
+   - `moderation_router.py` exists but is an empty stub — no endpoints yet.
 
-This gives you a clear roadmap from HTTP contract → internal structure → implementation order.
+### Beyond this service's scope
+
+The bigger gap is outside `question-generation-service` entirely:
+`quiz-session-service` and `learning-engine-service` are both empty stubs
+(health check only). Nothing today can select a question for a specific
+learner, track a `quiz_sessions` row, record a `user_responses` row, or run
+`update_bkt()` after an answer (main-workflow.md Steps 9–11). Question
+generation (Step 8) has nowhere to serve into yet.

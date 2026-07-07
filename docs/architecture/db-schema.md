@@ -111,8 +111,8 @@ bloom_level TEXT NOT NULL,
 difficulty_tier TEXT DEFAULT 'medium',
 question_type TEXT,
 question_text TEXT NOT NULL,
-options JSON,
-correct_answer TEXT,
+options JSONB,
+correct_answers JSONB,
 explanation TEXT,
 estimated_time TEXT,
 tags TEXT[],
@@ -120,12 +120,15 @@ language TEXT,
 source TEXT,
 version TEXT,
 created_by TEXT,
+owner_user_id UUID, -- NULL = public shared pool; non-NULL = private to that user (document-sourced)
 created_at DATETIME NOT NULL
 );
 
--- Indexes for questions
-CREATE INDEX idx_questions_concept_bloom ON questions(concept_id, bloom_level);
-CREATE INDEX idx_questions_tier ON questions(concept_id, bloom_level, difficulty_tier);
+-- Indexes for questions (partial per pool: public scans never touch private rows)
+CREATE INDEX idx_questions_public_pool ON questions(concept_id, bloom_level, difficulty_tier)
+WHERE owner_user_id IS NULL;
+CREATE INDEX idx_questions_private_pool ON questions(owner_user_id, concept_id, bloom_level, difficulty_tier)
+WHERE owner_user_id IS NOT NULL;
 
 -- Constraints for questions
 ALTER TABLE questions ADD CONSTRAINT chk_questions_difficulty_tier
@@ -133,6 +136,9 @@ CHECK (difficulty_tier IN ('easy', 'medium', 'hard'));
 
 ALTER TABLE questions ADD CONSTRAINT fk_questions_concept
 FOREIGN KEY (concept_id) REFERENCES learning_units(id) ON DELETE CASCADE;
+
+ALTER TABLE questions ADD CONSTRAINT fk_questions_owner
+FOREIGN KEY (owner_user_id) REFERENCES users(user_id) ON DELETE CASCADE;
 
 CREATE TABLE bloom_levels (
 level TEXT PRIMARY KEY,

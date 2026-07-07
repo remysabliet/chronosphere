@@ -13,7 +13,7 @@ AI-powered question generation using the Mistral API.
 - AI question generation from text
 - Question validation and quality control
 - Difficulty tiers (easy/medium/hard), calibrated against observed correct rates
-- Multiple question types (MCQ, True/False, Fill-in)
+- Multiple question types (MCQ, multi-select MCQ, True/False, Fill-in)
 
 ## Wizard Conversation Flow — design intent
 
@@ -31,8 +31,10 @@ Full workflow: `docs/product/main-workflow.md` (Step 8) and `docs/product/adapti
 POST /v1/thema/extract                    # Interpret raw input (intent + thema/topics)
 POST /v1/thema/{id}/refine                # Re-interpret with a learner clarification
 POST /v1/thema/{id}/confirm               # Confirm the interpretation before generation
+POST /v1/thema/{id}/exposure               # Answer the exposure question -> BKT init
 POST /v1/concepts/map                     # Map thema/topics to concept–Bloom pairs
 POST /v1/wizard/quiz-length/interpret     # Read a quiz size from free text (fast model)
+POST /v1/questions/generate               # Generate + validate a question batch (Step 8/8A)
 ```
 
 Interactive docs: `http://localhost:8001/scalar` (or `/docs`).
@@ -69,5 +71,24 @@ Integration tests require a running PostgreSQL instance:
 DATABASE_URL="postgresql://postgres:postgres@localhost:5432/memosphere_test" \
   uv run pytest tests/integration/
 ```
+
+### Live AI pipeline test (real Mistral, real cost)
+
+`tests/integration/test_live_ai_pipeline.py` drives the whole pipeline — thema
+extraction, concept mapping, exposure/BKT init, question generation, and the
+judge — against the **real** Mistral API instead of a mock, and prints every
+generated question so you can actually read and judge the content. It's
+skipped by default (needs a real `MISTRAL_API_KEY`, costs real credits) —
+opt in explicitly:
+
+```bash
+RUN_LIVE_MISTRAL_TESTS=1 DATABASE_URL="postgresql://memosphere:memosphere_secure_dev_2025!@localhost:5432/memosphere_test" \
+  uv run pytest tests/integration/test_live_ai_pipeline.py -v -s
+```
+
+`-s` is required to see the printed output. Override the topic with
+`LIVE_AI_TEST_INPUT="..."` if you want to try something other than the
+default. Runs deliberately slowly (spaced-out calls) — Mistral's rate limit
+is tight enough to trip within a single run otherwise.
 
 ## Port: 8001

@@ -18,7 +18,7 @@ def _batch_response(concept_id) -> QuestionBatchResponse:
                 question_type="MCQ",
                 question_text="What does the borrow checker enforce?",
                 options=["Ownership rules", "Garbage collection"],
-                correct_answer="Ownership rules",
+                correct_answers=["Ownership rules"],
                 explanation="It enforces Rust's ownership rules at compile time.",
                 estimated_time_seconds=30,
                 tags=["rust"],

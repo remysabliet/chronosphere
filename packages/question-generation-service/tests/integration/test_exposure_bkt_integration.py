@@ -10,8 +10,10 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from memosphere_domain import EXPOSURE_TO_P_L0
 from question_generation_service.core.config import get_settings
 from question_generation_service.repositories.concept_progress_repository import (
+    ConceptProgressInput,
     ConceptProgressRepository,
 )
 from question_generation_service.repositories.exposure_repository import ExposureRepository
@@ -19,7 +21,7 @@ from question_generation_service.repositories.learning_unit_repository import (
     LearningUnitRepository,
 )
 from question_generation_service.repositories.thema_repository import ThemaRepository
-from question_generation_service.schemas.exposure import EXPOSURE_TO_P_L0, ExposureRequest
+from question_generation_service.schemas.exposure import ExposureRequest
 from question_generation_service.schemas.thema import ConfirmRequest, ThemaRequest
 from question_generation_service.services.bkt_init_service import BktInitService
 from question_generation_service.services.concept_service import ConceptService
@@ -45,6 +47,24 @@ def _thema_extraction_response(thema: str, domain: str, topics: list[str]) -> di
 
 def _concept_map_response(concepts: list[dict[str, object]]) -> dict[str, object]:
     return {"concepts": concepts}
+
+
+async def _insert_learning_unit(session, concept_id: uuid.UUID, thema: str) -> None:
+    await session.execute(
+        text(
+            "INSERT INTO learning_units "
+            "(id, thema, topic, concept_name, complexity_level, created_at) "
+            "VALUES (:id, :thema, :topic, :concept_name, :complexity_level, now())"
+        ),
+        {
+            "id": str(concept_id),
+            "thema": thema,
+            "topic": "Topic",
+            "concept_name": "Concept",
+            "complexity_level": "Medium",
+        },
+    )
+    await session.commit()
 
 
 async def _insert_user(session, user_id: uuid.UUID) -> None:
@@ -253,5 +273,56 @@ async def test_exposure_and_bkt_init_fill_tables_correctly(monkeypatch, scenario
 
         concept_ids = {row.id for row in learning_units}
         assert {row.concept_id for row in progress_rows} == concept_ids
+
+    await engine.dispose()
+
+
+async def test_bkt_init_is_idempotent_on_repeat_confirm():
+    """Reproduces the production crash: a learner re-confirms a thema whose
+    concepts are already tracked for them (dedup means the same concept_ids
+    come back). Before the ON CONFLICT DO NOTHING fix, the second
+    initialize_batch call raised UniqueViolationError on the
+    (user_id, concept_id, bloom_level) primary key instead of no-op'ing.
+    """
+    settings = get_settings()
+    engine = create_async_engine(
+        settings.DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://")
+    )
+    session_factory = async_sessionmaker(bind=engine, expire_on_commit=False)
+
+    async with session_factory() as session:
+        user_id = uuid.uuid4()
+        concept_id = uuid.uuid4()
+        await _insert_user(session, user_id)
+        await _insert_learning_unit(session, concept_id, "Idempotency Check")
+
+        concept_progress_repository = ConceptProgressRepository(session)
+        rows: list[ConceptProgressInput] = [
+            {"concept_id": concept_id, "bloom_level": "Remembering", "p_ln": 0.2},
+            {"concept_id": concept_id, "bloom_level": "Understanding", "p_ln": 0.2},
+        ]
+
+        first = await concept_progress_repository.initialize_batch(user_id, rows)
+        assert len(first) == 2
+
+        # The exact scenario that crashed in production: re-confirming the
+        # same thema seeds the same (user, concept, bloom) pairs again.
+        second = await concept_progress_repository.initialize_batch(user_id, rows)
+        assert second == []
+
+        remaining = (
+            await session.execute(
+                text("SELECT COUNT(*) FROM concept_progress_tracker WHERE user_id = :user_id"),
+                {"user_id": str(user_id)},
+            )
+        ).scalar_one()
+        assert remaining == 2
+
+        # learning_units cascades to concept_progress_tracker.
+        await session.execute(
+            text("DELETE FROM learning_units WHERE id = :id"), {"id": str(concept_id)}
+        )
+        await session.execute(text("DELETE FROM users WHERE user_id = :id"), {"id": str(user_id)})
+        await session.commit()
 
     await engine.dispose()

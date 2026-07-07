@@ -9,19 +9,26 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from memosphere_domain import ALL_QUESTION_TYPES
 from question_generation_service.core.config import get_settings
+from question_generation_service.prompts.question_generation import build_prompt_3_system
+from question_generation_service.prompts.question_judge import PROMPT_4_SYSTEM
 from question_generation_service.repositories.question_repository import QuestionRepository
 from question_generation_service.schemas.question import QuestionGenerationRequest
 from question_generation_service.services.question_service import QuestionService
 
 pytestmark = pytest.mark.asyncio
 
+# The request built below never overrides allowed_question_types, so it's
+# always generated under the default (unrestricted) prompt.
+PROMPT_3_SYSTEM = build_prompt_3_system(ALL_QUESTION_TYPES)
+
 
 def _draft(
     question_type: str = "MCQ",
     question_text: str = "What does the borrow checker enforce at compile time?",
     options: list[str] | None = None,
-    correct_answer: str = "Ownership rules",
+    correct_answers: list[str] | None = None,
     explanation: str = "The borrow checker enforces Rust's ownership and borrowing rules.",
 ) -> dict[str, object]:
     return {
@@ -30,7 +37,7 @@ def _draft(
         "options": options
         if options is not None
         else ["Ownership rules", "Garbage collection", "Type inference", "Macros"],
-        "correct_answer": correct_answer,
+        "correct_answers": correct_answers if correct_answers is not None else ["Ownership rules"],
         "explanation": explanation,
         "estimated_time_seconds": 30,
         "tags": ["rust"],
@@ -55,6 +62,17 @@ async def _insert_learning_unit(session, concept_id: uuid.UUID, thema: str) -> N
     await session.commit()
 
 
+async def _insert_user(session, user_id: uuid.UUID) -> None:
+    await session.execute(
+        text(
+            "INSERT INTO users (user_id, name, email, created_at) "
+            "VALUES (:user_id, :name, :email, now())"
+        ),
+        {"user_id": str(user_id), "name": "Test User", "email": f"{user_id}@example.com"},
+    )
+    await session.commit()
+
+
 async def test_generate_batch_fills_questions_and_validation_log(monkeypatch):
     settings = get_settings()
     engine = create_async_engine(
@@ -64,14 +82,32 @@ async def test_generate_batch_fills_questions_and_validation_log(monkeypatch):
 
     async with session_factory() as session:
         concept_id = uuid.uuid4()
+        user_id = uuid.uuid4()
         await _insert_learning_unit(session, concept_id, "Rust Ownership")
+        await _insert_user(session, user_id)
 
         repository = QuestionRepository(session)
         service = QuestionService(repository)
 
-        # One clean question and one that fails validation (answer not in options),
-        # so both the "stored" and "dropped" paths get exercised against the real DB.
+        # One clean question and one that fails structural validation (answer not
+        # in options), so both the "stored" and "dropped" paths get exercised
+        # against the real DB. The judge call gets a generic "all good" verdict —
+        # judge behavior itself is covered by the unit tests.
         async def fake_chat_complete(system_msg, user_msg, config):
+            if system_msg == PROMPT_4_SYSTEM:
+                return {
+                    "verdicts": [
+                        {
+                            "index": 0,
+                            "requires_computation": False,
+                            "derived_answers": ["Ownership rules"],
+                            "bloom_aligned": True,
+                            "concept_relevant": True,
+                            "notes": "",
+                        }
+                    ]
+                }
+            assert system_msg == PROMPT_3_SYSTEM
             return {
                 "questions": [
                     _draft(),
@@ -79,7 +115,7 @@ async def test_generate_batch_fills_questions_and_validation_log(monkeypatch):
                         question_text="Does Rust use a garbage collector?",
                         question_type="TrueFalse",
                         options=["True", "False"],
-                        correct_answer="Nope",  # not in options -> Failed
+                        correct_answers=["Nope"],  # not in options -> Failed
                         explanation="Rust does not use a garbage collector.",
                     ),
                 ]
@@ -98,7 +134,7 @@ async def test_generate_batch_fills_questions_and_validation_log(monkeypatch):
             difficulty_tier="medium",
         )
 
-        result = await service.generate_batch(request)
+        result = await service.generate_batch(request, user_id)
 
         assert len(result.questions) == 1
         assert result.questions[0].validation_status == "Passed"
@@ -107,7 +143,7 @@ async def test_generate_batch_fills_questions_and_validation_log(monkeypatch):
             await session.execute(
                 text(
                     "SELECT id, concept_id, bloom_level, difficulty_tier, question_type, "
-                    "question_text, options, correct_answer, estimated_time, tags "
+                    "question_text, options, correct_answers, estimated_time, tags "
                     "FROM questions WHERE concept_id = :concept_id"
                 ),
                 {"concept_id": str(concept_id)},
@@ -118,7 +154,7 @@ async def test_generate_batch_fills_questions_and_validation_log(monkeypatch):
         assert row.bloom_level == "Understanding"
         assert row.difficulty_tier == "medium"
         assert row.question_type == "MCQ"
-        assert row.correct_answer == "Ownership rules"
+        assert row.correct_answers == ["Ownership rules"]
         assert row.estimated_time == "30"
         assert row.tags == ["rust"]
 

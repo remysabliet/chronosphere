@@ -1,3 +1,3 @@
-from memosphere_auth.cognito import CognitoTokenVerifier
+from memosphere_auth.cognito import CognitoClaims, CognitoTokenVerifier
 
-__all__ = ["CognitoTokenVerifier"]
+__all__ = ["CognitoClaims", "CognitoTokenVerifier"]

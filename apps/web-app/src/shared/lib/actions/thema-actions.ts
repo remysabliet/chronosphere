@@ -2,9 +2,13 @@
 
 import { auth } from '@/lib/auth';
 import type {
+  ConceptMapRequest,
+  ConceptMapResponse,
   ConfirmRequest,
   ExposureRequest,
   ExposureResult,
+  QuestionBatchResponse,
+  QuestionGenerationRequest,
   QuizLengthInterpretation,
   RefineRequest,
   ResolvedThema,
@@ -74,4 +78,16 @@ export async function interpretQuizLengthAction(
   return postJSON('/v1/wizard/quiz-length/interpret', {
     raw_user_input: rawUserInput,
   });
+}
+
+export async function mapConceptsAction(
+  body: ConceptMapRequest
+): Promise<ConceptMapResponse> {
+  return postJSON('/v1/concepts/map', body);
+}
+
+export async function generateQuestionsAction(
+  body: QuestionGenerationRequest
+): Promise<QuestionBatchResponse> {
+  return postJSON('/v1/questions/generate', body);
 }

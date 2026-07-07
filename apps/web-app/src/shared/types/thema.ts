@@ -84,3 +84,72 @@ export interface ExposureResult {
   p_l0: number;
   concepts_initialized: number;
 }
+
+export type BloomLevel =
+  | 'Remembering'
+  | 'Understanding'
+  | 'Applying'
+  | 'Analyzing'
+  | 'Evaluating'
+  | 'Creating';
+
+export type QuestionType =
+  | 'MCQ'
+  | 'MCQMultiSelect'
+  | 'TrueFalse'
+  | 'FillInBlank';
+
+export type DifficultyTier = 'easy' | 'medium' | 'hard';
+
+export interface ConceptMapRequest {
+  thema: string;
+  topics: string[];
+}
+
+export interface StoredConceptItem {
+  id: string;
+  topic: string;
+  concept: string;
+  learning_goal: string;
+  bloom_levels: BloomLevel[];
+  estimated_time_minutes: number;
+  complexity_level: 'Low' | 'Medium' | 'High';
+}
+
+export interface ConceptMapResponse {
+  thema: string;
+  concepts: StoredConceptItem[];
+}
+
+export interface QuestionGenerationRequest {
+  concept_id: string;
+  concept_name: string;
+  learning_goal: string;
+  bloom_level: BloomLevel;
+  difficulty_tier: DifficultyTier;
+  allowed_question_types: QuestionType[];
+}
+
+export type ValidationStatus = 'Passed' | 'Failed' | 'Warning';
+
+export interface StoredQuestion {
+  id: string;
+  concept_id: string;
+  bloom_level: BloomLevel;
+  difficulty_tier: DifficultyTier;
+  question_type: QuestionType;
+  question_text: string;
+  options: string[] | null;
+  correct_answers: string[];
+  explanation: string;
+  estimated_time_seconds: number;
+  tags: string[];
+  validation_status: ValidationStatus;
+}
+
+export interface QuestionBatchResponse {
+  concept_id: string;
+  bloom_level: BloomLevel;
+  difficulty_tier: DifficultyTier;
+  questions: StoredQuestion[];
+}

@@ -6,6 +6,7 @@ import {
   Clock,
   Compass,
   Hash,
+  ListChecks,
   ScrollText,
   Send,
   Sparkles,
@@ -17,7 +18,9 @@ import { toast } from 'sonner';
 import {
   confirmThemaAction,
   extractThemaAction,
+  generateQuestionsAction,
   interpretQuizLengthAction,
+  mapConceptsAction,
   refineThemaAction,
   submitExposureAction,
 } from '@/lib/actions/thema-actions';
@@ -29,6 +32,7 @@ import { WizardAvatar } from '@/shared/components/wizard/wizard-avatar';
 import type {
   ExposureLevel,
   NonTopicKind,
+  QuestionType,
   ResolvedThema,
   ThemaExtractionResult,
 } from '@/types/thema';
@@ -52,7 +56,13 @@ type ChatMessage =
       result: ThemaExtractionResult;
       sourceText: string;
     }
-  | { id: string; role: 'assistant'; kind: 'confirmed'; result: ResolvedThema }
+  | {
+      id: string;
+      role: 'assistant';
+      kind: 'confirmed';
+      result: ResolvedThema;
+      questionCount: number;
+    }
   | {
       id: string;
       role: 'assistant';
@@ -60,6 +70,7 @@ type ChatMessage =
       extractionId: string;
     }
   | { id: string; role: 'assistant'; kind: 'quiz_length_prompt' }
+  | { id: string; role: 'assistant'; kind: 'question_type_prompt' }
   | { id: string; role: 'assistant'; kind: 'wizard_text'; text: string }
   | { id: string; role: 'user'; kind: 'text'; text: string };
 
@@ -79,8 +90,14 @@ type QuizLength =
   | { mode: 'both'; minutes: number; questions: number }
   | { mode: 'unlimited' };
 
-const TIME_OPTIONS = [10, 20, 30];
-const COUNT_OPTIONS = [10, 20, 30];
+const QUESTION_COUNT_PRESETS = [10, 20, 30];
+const MINUTES_PRESETS = [10, 20, 30];
+const MIN_QUESTION_COUNT = 1;
+const MAX_QUESTION_COUNT = 100;
+const MIN_MINUTES = 1;
+const MAX_MINUTES = 180;
+const DEFAULT_QUESTION_COUNT = 10;
+const DEFAULT_MINUTES = 20;
 
 function describeQuizLength(length: QuizLength): string {
   if (length.mode === 'time') return `${length.minutes} minutes`;
@@ -88,6 +105,40 @@ function describeQuizLength(length: QuizLength): string {
   if (length.mode === 'both')
     return `${length.questions} questions in ${length.minutes} minutes`;
   return 'No limit';
+}
+
+// Mirrors the MVP scope in docs/product/mvp.md — MCQ, multi-select MCQ,
+// True/False, Fill-in-the-blank. Flashcards are a separate future type.
+const QUESTION_TYPE_OPTIONS: { type: QuestionType; label: string }[] = [
+  { type: 'MCQ', label: 'Multiple choice (one answer)' },
+  { type: 'MCQMultiSelect', label: 'Multiple choice (several answers)' },
+  { type: 'TrueFalse', label: 'True / False' },
+  { type: 'FillInBlank', label: 'Fill in the blank' },
+];
+
+function describeQuestionTypes(types: QuestionType[]): string {
+  return types
+    .map(t => QUESTION_TYPE_OPTIONS.find(o => o.type === t)?.label ?? t)
+    .join(', ');
+}
+
+// Each generation call produces one fixed-size batch (BATCH_SIZE in
+// question_generation_service/schemas/question.py) — used only to estimate
+// how many batches are needed to roughly cover the chosen quiz length.
+const QUESTIONS_PER_BATCH = 5;
+const SECONDS_PER_QUESTION_ESTIMATE = 45;
+const UNLIMITED_TARGET_QUESTION_COUNT = 20;
+
+function targetQuestionCount(length: QuizLength): number {
+  if (length.mode === 'count' || length.mode === 'both')
+    return length.questions;
+  if (length.mode === 'time') {
+    return Math.max(
+      1,
+      Math.round((length.minutes * 60) / SECONDS_PER_QUESTION_ESTIMATE)
+    );
+  }
+  return UNLIMITED_TARGET_QUESTION_COUNT;
 }
 
 function newId(): string {
@@ -127,6 +178,11 @@ const QUEST_STEPS = [
     description: 'Pick a time budget or a number of questions.',
   },
   {
+    icon: ListChecks,
+    title: 'Choose question types',
+    description: 'Pick which formats to include.',
+  },
+  {
     icon: Check,
     title: 'Ready to quiz',
     description: "Locked in — you're set.",
@@ -146,6 +202,9 @@ export default function QuizWizardPage() {
   const [quizLength, setQuizLength] = React.useState<QuizLength | undefined>(
     undefined
   );
+  const [questionTypes, setQuestionTypes] = React.useState<
+    QuestionType[] | undefined
+  >(undefined);
   // Confirmation result held back until sizing is settled (see effect below).
   const [confirmedResult, setConfirmedResult] =
     React.useState<ResolvedThema | null>(null);
@@ -298,6 +357,7 @@ export default function QuizWizardPage() {
               reply.trim() ||
               `Got it — ${describeQuizLength(length).toLowerCase()}!${paceNote}`,
           },
+          { id: newId(), role: 'assistant', kind: 'question_type_prompt' },
         ]);
         return;
       }
@@ -316,46 +376,126 @@ export default function QuizWizardPage() {
     onError: onMutationError,
   });
 
+  // Surfaced in the thinking bubble while generateMutation runs — the batch
+  // loop below is several sequential AI calls and can take a while; a bare
+  // "thinking" dot dance with no count reads as stuck.
+  const [generationProgress, setGenerationProgress] = React.useState<{
+    done: number;
+    total: number;
+  } | null>(null);
+
+  // Fires once quiz length AND question types are both settled (see effect
+  // below). Fetches the concepts mapped for this thema (Step 6, already
+  // computed during confirm() — this just reads them back) and generates one
+  // batch per concept/Bloom pair, up to roughly enough batches to cover the
+  // chosen quiz length.
+  const generateMutation = useMutation({
+    mutationFn: async (input: {
+      confirmed: ResolvedThema;
+      allowedTypes: QuestionType[];
+      targetCount: number;
+    }) => {
+      const { concepts } = await mapConceptsAction({
+        thema: input.confirmed.thema,
+        topics: input.confirmed.topics,
+      });
+      const pairs = concepts.flatMap(concept =>
+        concept.bloom_levels.map(bloomLevel => ({
+          conceptId: concept.id,
+          conceptName: concept.concept,
+          learningGoal: concept.learning_goal,
+          bloomLevel,
+        }))
+      );
+      const batchesNeeded = Math.max(
+        1,
+        Math.ceil(input.targetCount / QUESTIONS_PER_BATCH)
+      );
+      const totalBatches = Math.min(batchesNeeded, pairs.length);
+
+      let totalStored = 0;
+      let batchesDone = 0;
+      setGenerationProgress({ done: 0, total: totalBatches });
+      for (const pair of pairs.slice(0, batchesNeeded)) {
+        const batch = await generateQuestionsAction({
+          concept_id: pair.conceptId,
+          concept_name: pair.conceptName,
+          learning_goal: pair.learningGoal,
+          bloom_level: pair.bloomLevel,
+          difficulty_tier: 'medium',
+          allowed_question_types: input.allowedTypes,
+        });
+        totalStored += batch.questions.length;
+        batchesDone += 1;
+        setGenerationProgress({ done: batchesDone, total: totalBatches });
+      }
+      return totalStored;
+    },
+    onSuccess: (questionCount, variables) => {
+      setGenerationProgress(null);
+      setMessages(prev => [
+        ...prev,
+        {
+          id: newId(),
+          role: 'assistant',
+          kind: 'confirmed',
+          result: variables.confirmed,
+          questionCount,
+        },
+      ]);
+    },
+    onError: error => {
+      setGenerationProgress(null);
+      onMutationError(error);
+    },
+  });
+
   const isThinking =
     extractMutation.isPending ||
     refineMutation.isPending ||
+    confirmMutation.isPending ||
     lengthMutation.isPending ||
-    exposureMutation.isPending;
+    exposureMutation.isPending ||
+    generateMutation.isPending;
   const lastMessage = messages[messages.length - 1];
   const justConfirmed = lastMessage?.kind === 'confirmed';
-  // Exposure is answered with buttons only (no LLM parse) — block free text
-  // until the learner picks one, mirroring the quiz-length gate below.
+  // Derived from the actual last bubble shown, not from optimistic client
+  // flags (e.g. confirmClicked flips true the instant a button is clicked,
+  // well before the corresponding prompt bubble actually arrives) — so the
+  // input placeholder and routing below never react to a step before its
+  // question has actually been asked.
   const awaitingExposure = lastMessage?.kind === 'exposure_prompt';
+  const awaitingQuestionTypes = lastMessage?.kind === 'question_type_prompt';
+  const awaitingQuizLength = lastMessage?.kind === 'quiz_length_prompt';
 
   const currentStepIndex = !pendingExtractionId
     ? 0
     : !confirmClicked
       ? 1
-      : !justConfirmed || !quizLength
+      : !quizLength
         ? 2
-        : 3;
+        : !questionTypes
+          ? 3
+          : 4;
   const latestResolved = [...messages]
     .reverse()
     .find(isResolvedMessage)?.result;
   const confirmedThema =
     lastMessage?.kind === 'confirmed' ? lastMessage.result : undefined;
 
-  // The flow is complete only when BOTH the topic confirmation returned and a
-  // quiz length is set — whichever lands last triggers the completion bubble.
+  // The flow is complete only once the topic is confirmed, a quiz length is
+  // set, AND question types are chosen — whichever lands last triggers
+  // generation, which in turn shows the completion bubble on success.
   React.useEffect(() => {
-    if (!confirmedResult || !quizLength) return;
+    if (!confirmedResult || !quizLength || !questionTypes) return;
     if (completionShownFor.current === confirmedResult.extraction_id) return;
     completionShownFor.current = confirmedResult.extraction_id;
-    setMessages(prev => [
-      ...prev,
-      {
-        id: newId(),
-        role: 'assistant',
-        kind: 'confirmed',
-        result: confirmedResult,
-      },
-    ]);
-  }, [confirmedResult, quizLength]);
+    generateMutation.mutate({
+      confirmed: confirmedResult,
+      allowedTypes: questionTypes,
+      targetCount: targetQuestionCount(quizLength),
+    });
+  }, [confirmedResult, quizLength, questionTypes]);
 
   React.useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -363,7 +503,7 @@ export default function QuizWizardPage() {
 
   function handleSend() {
     const text = inputValue.trim();
-    if (text.length < 2 || awaitingExposure) return;
+    if (text.length < 2 || awaitingExposure || awaitingQuestionTypes) return;
 
     setMessages(prev => [
       ...prev,
@@ -373,7 +513,7 @@ export default function QuizWizardPage() {
 
     // Step-aware routing: while the sizing question is open, typed text answers
     // the sizing question — it must never be re-interpreted as a topic.
-    if (confirmClicked && !quizLength) {
+    if (awaitingQuizLength) {
       lengthMutation.mutate(text);
       return;
     }
@@ -412,13 +552,29 @@ export default function QuizWizardPage() {
         kind: 'text',
         text: describeQuizLength(length),
       },
+      { id: newId(), role: 'assistant', kind: 'question_type_prompt' },
+    ]);
+  }
+
+  function handleSelectQuestionTypes(types: QuestionType[]) {
+    setQuestionTypes(types);
+    setMessages(prev => [
+      ...prev,
+      {
+        id: newId(),
+        role: 'user',
+        kind: 'text',
+        text: describeQuestionTypes(types),
+      },
     ]);
   }
 
   let placeholder = 'What do you want to learn?';
   if (awaitingExposure) {
     placeholder = 'Pick one above';
-  } else if (confirmClicked && !quizLength) {
+  } else if (awaitingQuestionTypes) {
+    placeholder = 'Pick at least one above';
+  } else if (awaitingQuizLength) {
     placeholder = 'e.g. "15 minutes", "10 questions", or "no limit"';
   } else if (pendingExtractionId) {
     placeholder = justConfirmed
@@ -452,9 +608,19 @@ export default function QuizWizardPage() {
                 onSelectQuizLength={handleSelectQuizLength}
                 isSubmittingExposure={exposureMutation.isPending}
                 onSelectExposure={handleSelectExposure}
+                questionTypes={questionTypes}
+                onSelectQuestionTypes={handleSelectQuestionTypes}
               />
             ))}
-            {isThinking && <ThinkingBubble />}
+            {isThinking && (
+              <ThinkingBubble
+                label={
+                  generationProgress
+                    ? `Generating questions… (${generationProgress.done}/${generationProgress.total})`
+                    : undefined
+                }
+              />
+            )}
             <div ref={bottomRef} />
           </div>
 
@@ -470,7 +636,7 @@ export default function QuizWizardPage() {
               onChange={e => setInputValue(e.target.value)}
               aria-label='Message'
               placeholder={placeholder}
-              disabled={isThinking || awaitingExposure}
+              disabled={isThinking || awaitingExposure || awaitingQuestionTypes}
               className='rounded-full border-none bg-transparent shadow-none focus-visible:ring-0'
             />
             <Button
@@ -478,7 +644,10 @@ export default function QuizWizardPage() {
               size='icon'
               className='shrink-0 rounded-full'
               disabled={
-                isThinking || awaitingExposure || inputValue.trim().length < 2
+                isThinking ||
+                awaitingExposure ||
+                awaitingQuestionTypes ||
+                inputValue.trim().length < 2
               }
             >
               <Send className='size-4' />
@@ -599,17 +768,22 @@ function AssistantBubble({
   );
 }
 
-function ThinkingBubble() {
+function ThinkingBubble({ label }: { label?: string }) {
   return (
     <AssistantBubble talking centerTail>
-      <div className='flex items-center gap-1'>
-        {[0, 1, 2].map(i => (
-          <span
-            key={i}
-            className='size-1.5 animate-bounce rounded-full bg-muted-foreground'
-            style={{ animationDelay: `${i * 0.12}s` }}
-          />
-        ))}
+      <div className='flex items-center gap-2'>
+        <div className='flex items-center gap-1'>
+          {[0, 1, 2].map(i => (
+            <span
+              key={i}
+              className='size-1.5 animate-bounce rounded-full bg-muted-foreground'
+              style={{ animationDelay: `${i * 0.12}s` }}
+            />
+          ))}
+        </div>
+        {label && (
+          <span className='text-xs text-muted-foreground'>{label}</span>
+        )}
       </div>
     </AssistantBubble>
   );
@@ -630,73 +804,216 @@ function TopicChips({ topics }: { topics: string[] }) {
   );
 }
 
-function quizLengthEquals(a: QuizLength, b: QuizLength): boolean {
-  if (a.mode !== b.mode) return false;
-  if (a.mode === 'time' && b.mode === 'time') return a.minutes === b.minutes;
-  if (a.mode === 'count' && b.mode === 'count')
-    return a.questions === b.questions;
-  return a.mode === 'unlimited' && b.mode === 'unlimited';
+function initialLimitByCount(value: QuizLength | undefined): boolean {
+  return value?.mode === 'count' || value?.mode === 'both';
+}
+
+function initialLimitByTime(value: QuizLength | undefined): boolean {
+  return value?.mode === 'time' || value?.mode === 'both';
+}
+
+function initialQuestionCount(value: QuizLength | undefined): number {
+  if (value?.mode === 'count' || value?.mode === 'both') return value.questions;
+  return DEFAULT_QUESTION_COUNT;
+}
+
+function initialMinutes(value: QuizLength | undefined): number {
+  if (value?.mode === 'time' || value?.mode === 'both') return value.minutes;
+  return DEFAULT_MINUTES;
+}
+
+function clampNumber(value: number, min: number, max: number): number {
+  if (Number.isNaN(value)) return min;
+  return Math.min(max, Math.max(min, Math.round(value)));
 }
 
 function QuizLengthPicker({
   value,
-  onSelect,
+  onConfirm,
 }: {
   value?: QuizLength;
-  onSelect: (length: QuizLength) => void;
+  onConfirm: (length: QuizLength) => void;
 }) {
-  function variantFor(length: QuizLength) {
-    return value && quizLengthEquals(value, length) ? 'default' : 'outline';
+  const locked = value !== undefined;
+  const [limitByCount, setLimitByCount] = React.useState(
+    initialLimitByCount(value)
+  );
+  const [questionCount, setQuestionCount] = React.useState(
+    initialQuestionCount(value)
+  );
+  const [limitByTime, setLimitByTime] = React.useState(
+    initialLimitByTime(value)
+  );
+  const [minutes, setMinutes] = React.useState(initialMinutes(value));
+
+  function handleContinue() {
+    if (limitByCount && limitByTime) {
+      onConfirm({ mode: 'both', questions: questionCount, minutes });
+    } else if (limitByCount) {
+      onConfirm({ mode: 'count', questions: questionCount });
+    } else if (limitByTime) {
+      onConfirm({ mode: 'time', minutes });
+    } else {
+      onConfirm({ mode: 'unlimited' });
+    }
   }
 
   return (
     <div className='space-y-3'>
-      <div>
-        <p className='mb-1.5 flex items-center gap-1 text-xs font-medium text-muted-foreground'>
-          <Clock className='size-3' />
-          By time
-        </p>
-        <div className='flex flex-wrap gap-1.5'>
-          {TIME_OPTIONS.map(minutes => (
-            <Button
-              key={minutes}
-              type='button'
-              size='sm'
-              variant={variantFor({ mode: 'time', minutes })}
-              onClick={() => onSelect({ mode: 'time', minutes })}
-            >
-              {minutes} min
-            </Button>
-          ))}
-        </div>
-      </div>
-      <div>
-        <p className='mb-1.5 flex items-center gap-1 text-xs font-medium text-muted-foreground'>
-          <Hash className='size-3' />
-          By question count
-        </p>
-        <div className='flex flex-wrap gap-1.5'>
-          {COUNT_OPTIONS.map(questions => (
-            <Button
-              key={questions}
-              type='button'
-              size='sm'
-              variant={variantFor({ mode: 'count', questions })}
-              onClick={() => onSelect({ mode: 'count', questions })}
-            >
-              {questions} questions
-            </Button>
-          ))}
-        </div>
-      </div>
-      <Button
-        type='button'
-        size='sm'
-        variant={variantFor({ mode: 'unlimited' })}
-        onClick={() => onSelect({ mode: 'unlimited' })}
+      <div
+        className={cn(
+          'rounded-xl border p-3 transition-colors',
+          limitByCount ? 'border-primary/50 bg-primary/5' : 'border-border'
+        )}
       >
-        No limit
-      </Button>
+        <label className='flex cursor-pointer items-center gap-2 text-sm font-medium'>
+          <input
+            type='checkbox'
+            checked={limitByCount}
+            disabled={locked}
+            onChange={e => setLimitByCount(e.target.checked)}
+            className='size-4 rounded border-muted-foreground/40 accent-primary disabled:cursor-not-allowed'
+          />
+          <Hash className='size-3.5 text-muted-foreground' />
+          Limit by number of questions
+        </label>
+        {limitByCount && (
+          <div className='mt-2 flex flex-wrap items-center gap-1.5 pl-6'>
+            <Input
+              type='number'
+              inputMode='numeric'
+              min={MIN_QUESTION_COUNT}
+              max={MAX_QUESTION_COUNT}
+              value={questionCount}
+              disabled={locked}
+              onChange={e =>
+                setQuestionCount(
+                  clampNumber(
+                    Number(e.target.value),
+                    MIN_QUESTION_COUNT,
+                    MAX_QUESTION_COUNT
+                  )
+                )
+              }
+              className='h-8 w-20 rounded-full text-center'
+            />
+            <span className='text-sm text-muted-foreground'>questions</span>
+            {!locked &&
+              QUESTION_COUNT_PRESETS.map(preset => (
+                <Button
+                  key={preset}
+                  type='button'
+                  size='sm'
+                  variant={questionCount === preset ? 'default' : 'outline'}
+                  onClick={() => setQuestionCount(preset)}
+                >
+                  {preset}
+                </Button>
+              ))}
+          </div>
+        )}
+      </div>
+
+      <div
+        className={cn(
+          'rounded-xl border p-3 transition-colors',
+          limitByTime ? 'border-primary/50 bg-primary/5' : 'border-border'
+        )}
+      >
+        <label className='flex cursor-pointer items-center gap-2 text-sm font-medium'>
+          <input
+            type='checkbox'
+            checked={limitByTime}
+            disabled={locked}
+            onChange={e => setLimitByTime(e.target.checked)}
+            className='size-4 rounded border-muted-foreground/40 accent-primary disabled:cursor-not-allowed'
+          />
+          <Clock className='size-3.5 text-muted-foreground' />
+          Limit by time
+        </label>
+        {limitByTime && (
+          <div className='mt-2 flex flex-wrap items-center gap-1.5 pl-6'>
+            <Input
+              type='number'
+              inputMode='numeric'
+              min={MIN_MINUTES}
+              max={MAX_MINUTES}
+              value={minutes}
+              disabled={locked}
+              onChange={e =>
+                setMinutes(
+                  clampNumber(Number(e.target.value), MIN_MINUTES, MAX_MINUTES)
+                )
+              }
+              className='h-8 w-20 rounded-full text-center'
+            />
+            <span className='text-sm text-muted-foreground'>minutes</span>
+            {!locked &&
+              MINUTES_PRESETS.map(preset => (
+                <Button
+                  key={preset}
+                  type='button'
+                  size='sm'
+                  variant={minutes === preset ? 'default' : 'outline'}
+                  onClick={() => setMinutes(preset)}
+                >
+                  {preset}
+                </Button>
+              ))}
+          </div>
+        )}
+      </div>
+
+      {!locked && (
+        <Button type='button' size='sm' onClick={handleContinue}>
+          Continue
+        </Button>
+      )}
+    </div>
+  );
+}
+
+function QuestionTypePicker({
+  value,
+  onConfirm,
+}: {
+  value?: QuestionType[];
+  onConfirm: (types: QuestionType[]) => void;
+}) {
+  const [selected, setSelected] = React.useState<QuestionType[]>(value ?? []);
+
+  function toggle(type: QuestionType) {
+    setSelected(prev =>
+      prev.includes(type) ? prev.filter(t => t !== type) : [...prev, type]
+    );
+  }
+
+  return (
+    <div className='space-y-3'>
+      <div className='flex flex-wrap gap-1.5'>
+        {QUESTION_TYPE_OPTIONS.map(({ type, label }) => (
+          <Button
+            key={type}
+            type='button'
+            size='sm'
+            variant={selected.includes(type) ? 'default' : 'outline'}
+            disabled={value !== undefined}
+            onClick={() => toggle(type)}
+          >
+            {label}
+          </Button>
+        ))}
+      </div>
+      {value === undefined && (
+        <Button
+          type='button'
+          size='sm'
+          disabled={selected.length === 0}
+          onClick={() => onConfirm(selected)}
+        >
+          Continue
+        </Button>
+      )}
     </div>
   );
 }
@@ -709,6 +1026,8 @@ function MessageBubble({
   onSelectQuizLength,
   isSubmittingExposure,
   onSelectExposure,
+  questionTypes,
+  onSelectQuestionTypes,
 }: {
   message: ChatMessage;
   isConfirming: boolean;
@@ -717,6 +1036,8 @@ function MessageBubble({
   onSelectQuizLength: (length: QuizLength) => void;
   isSubmittingExposure: boolean;
   onSelectExposure: (extractionId: string, level: ExposureLevel) => void;
+  questionTypes?: QuestionType[];
+  onSelectQuestionTypes: (types: QuestionType[]) => void;
 }) {
   if (message.role === 'user') {
     return (
@@ -747,6 +1068,11 @@ function MessageBubble({
             ? ` (${describeQuizLength(quizLength).toLowerCase()})`
             : ''}
           .
+        </p>
+        <p>
+          {message.questionCount > 0
+            ? `${message.questionCount} question${message.questionCount === 1 ? '' : 's'} ready.`
+            : "Hmm, no questions made it through validation — you can still explore what's mapped so far."}
         </p>
         <p className='text-xs text-muted-foreground'>
           Want something else covered? Tell me below — or head to your dashboard
@@ -785,7 +1111,19 @@ function MessageBubble({
     return (
       <AssistantBubble>
         <p>How do you want to size the quiz?</p>
-        <QuizLengthPicker value={quizLength} onSelect={onSelectQuizLength} />
+        <QuizLengthPicker value={quizLength} onConfirm={onSelectQuizLength} />
+      </AssistantBubble>
+    );
+  }
+
+  if (message.kind === 'question_type_prompt') {
+    return (
+      <AssistantBubble>
+        <p>What kind of questions do you want? Pick one or more.</p>
+        <QuestionTypePicker
+          value={questionTypes}
+          onConfirm={onSelectQuestionTypes}
+        />
       </AssistantBubble>
     );
   }

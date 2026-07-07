@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     COGNITO_ISSUER: str
     COGNITO_CLIENT_ID: str
     DEBUG: bool = False
+    REDIS_URL: str = "redis://localhost:6379"
+    # Off by default so tests/tooling never spin workers; compose sets it on.
+    ENABLE_BACKGROUND_WORKERS: bool = False
 
     # Thema self-consistency decision gate (vote-share over n samples).
     THEMA_T_HIGH: float = 0.6  # min winner vote share to skip the picker

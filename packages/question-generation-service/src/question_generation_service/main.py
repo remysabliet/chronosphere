@@ -1,11 +1,16 @@
+import asyncio
 from contextlib import asynccontextmanager
+from typing import cast
 
 import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from redis.asyncio import Redis
 from scalar_fastapi import get_scalar_api_reference
 
+from memosphere_messaging import RedisStreamsBroker, StreamsClient
 from question_generation_service.clients import mistral_client
+from question_generation_service.core.config import get_settings
 from question_generation_service.core.exceptions import (
     AIEmptyResponseError,
     AIInvalidResponseError,
@@ -14,12 +19,15 @@ from question_generation_service.core.exceptions import (
     DomainError,
     NotFoundError,
 )
-from question_generation_service.db.session import engine
+from question_generation_service.db.session import async_session, engine
 from question_generation_service.routers.concept_router import concept_router
 from question_generation_service.routers.moderation_router import moderation_router
 from question_generation_service.routers.questions_router import questions_router
+from question_generation_service.routers.quiz_router import quiz_router
 from question_generation_service.routers.thema_router import thema_router
 from question_generation_service.routers.wizard_router import wizard_router
+from question_generation_service.workers.generation_worker import GenerationWorker
+from question_generation_service.workers.outbox_relay import OutboxRelay
 
 _STATUS_BY_EXCEPTION = {
     NotFoundError: 404,
@@ -29,10 +37,32 @@ _STATUS_BY_EXCEPTION = {
     AIInvalidResponseError: 502,
 }
 
+_WORKER_SHUTDOWN_TIMEOUT_SECONDS = 10
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    settings = get_settings()
+    redis: Redis | None = None
+    worker_tasks: list[asyncio.Task[None]] = []
+    stop = asyncio.Event()
+    if settings.ENABLE_BACKGROUND_WORKERS:
+        redis = Redis.from_url(  # pyright: ignore[reportUnknownMemberType]
+            settings.REDIS_URL, decode_responses=True
+        )
+        broker = RedisStreamsBroker(cast(StreamsClient, redis))
+        relay = OutboxRelay(async_session, broker)
+        worker = GenerationWorker(async_session, broker)
+        worker_tasks = [
+            asyncio.create_task(relay.run(stop), name="outbox-relay"),
+            asyncio.create_task(worker.run(stop), name="generation-worker"),
+        ]
     yield
+    stop.set()
+    if worker_tasks:
+        await asyncio.wait(worker_tasks, timeout=_WORKER_SHUTDOWN_TIMEOUT_SECONDS)
+    if redis is not None:
+        await redis.aclose()
     await mistral_client.aclose()
     await engine.dispose()
 
@@ -58,6 +88,7 @@ async def health_check():
 
 app.include_router(concept_router)
 app.include_router(questions_router)
+app.include_router(quiz_router)
 app.include_router(thema_router)
 app.include_router(wizard_router)
 app.include_router(moderation_router)

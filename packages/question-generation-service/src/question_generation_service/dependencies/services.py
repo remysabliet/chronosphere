@@ -9,11 +9,13 @@ from question_generation_service.repositories.concept_progress_repository import
 from question_generation_service.repositories.exposure_repository import ExposureRepository
 from question_generation_service.repositories.learning_unit_repository import LearningUnitRepository
 from question_generation_service.repositories.question_repository import QuestionRepository
+from question_generation_service.repositories.quiz_repository import QuizRepository
 from question_generation_service.repositories.thema_repository import ThemaRepository
 from question_generation_service.services.bkt_init_service import BktInitService
 from question_generation_service.services.concept_service import ConceptService
 from question_generation_service.services.exposure_service import ExposureService
 from question_generation_service.services.question_service import QuestionService
+from question_generation_service.services.quiz_service import QuizService
 from question_generation_service.services.thema_service import ThemaService
 from question_generation_service.services.wizard_service import WizardService
 
@@ -82,8 +84,22 @@ def get_question_service(
     return QuestionService(repository)
 
 
+def get_quiz_repository(session: SessionDep) -> QuizRepository:
+    return QuizRepository(session)
+
+
+def get_quiz_service(
+    quiz_repository: Annotated[QuizRepository, Depends(get_quiz_repository)],
+    learning_unit_repository: Annotated[
+        LearningUnitRepository, Depends(get_learning_unit_repository)
+    ],
+) -> QuizService:
+    return QuizService(quiz_repository, learning_unit_repository)
+
+
 ThemaServiceDep = Annotated[ThemaService, Depends(get_thema_service)]
 ConceptServiceDep = Annotated[ConceptService, Depends(get_concept_service)]
 WizardServiceDep = Annotated[WizardService, Depends(get_wizard_service)]
 ExposureServiceDep = Annotated[ExposureService, Depends(get_exposure_service)]
 QuestionServiceDep = Annotated[QuestionService, Depends(get_question_service)]
+QuizServiceDep = Annotated[QuizService, Depends(get_quiz_service)]

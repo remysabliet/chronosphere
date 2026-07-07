@@ -79,7 +79,7 @@ export const seed = async function (knex) {
         'To cluster similar data points',
         'To reduce data dimensionality',
       ]),
-      correct_answer: 'To predict continuous values',
+      correct_answers: JSON.stringify(['To predict continuous values']),
       explanation:
         'Linear regression is used to predict continuous numerical values by finding the best line through data points.',
       estimated_time: '2 minutes',
@@ -99,7 +99,7 @@ export const seed = async function (knex) {
       question_text:
         'Given the equation y = 2x + 3, what would be the predicted value when x = 5?',
       options: JSON.stringify(['10', '11', '13', '15']),
-      correct_answer: '13',
+      correct_answers: JSON.stringify(['13']),
       explanation:
         'Substituting x = 5 into the equation: y = 2(5) + 3 = 10 + 3 = 13',
       estimated_time: '3 minutes',

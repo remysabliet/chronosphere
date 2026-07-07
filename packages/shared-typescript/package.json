@@ -1,5 +1,5 @@
 {
-  "name": "@memosphere/shared",
+  "name": "@memosphere/shared-typescript",
   "version": "1.0.0",
   "description": "Shared utilities, types, and configurations",
   "main": "dist/index.js",

@@ -2,6 +2,7 @@ from collections.abc import Sequence
 from typing import Protocol
 from uuid import UUID
 
+from memosphere_domain import EXPOSURE_TO_P_L0
 from question_generation_service.core.exceptions import NotFoundError
 from question_generation_service.repositories.exposure_repository import (
     ExposureRepositoryProtocol,
@@ -10,11 +11,7 @@ from question_generation_service.repositories.learning_unit_repository import (
     LearningUnitEntryProtocol,
 )
 from question_generation_service.repositories.thema_repository import ThemaEntryProtocol
-from question_generation_service.schemas.exposure import (
-    EXPOSURE_TO_P_L0,
-    ExposureRequest,
-    ExposureResult,
-)
+from question_generation_service.schemas.exposure import ExposureRequest, ExposureResult
 from question_generation_service.services.bkt_init_service import BktInitServiceProtocol
 
 

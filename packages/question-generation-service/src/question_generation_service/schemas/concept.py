@@ -1,20 +1,9 @@
-from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from memosphere_domain import BloomLevel, ComplexityLevel
 from question_generation_service.schemas.thema import LearnerContext
-
-BloomLevel = Literal[
-    "Remembering",
-    "Understanding",
-    "Applying",
-    "Analyzing",
-    "Evaluating",
-    "Creating",
-]
-
-ComplexityLevel = Literal["Low", "Medium", "High"]
 
 
 class ConceptItem(BaseModel):

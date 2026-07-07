@@ -2,6 +2,7 @@ import json
 from typing import Any, TypedDict, cast
 from uuid import UUID
 
+from memosphere_domain import EXPOSURE_TO_P_L0, ExposureLevel
 from question_generation_service.clients.mistral_client import chat_complete
 from question_generation_service.core.config import get_settings
 from question_generation_service.core.exceptions import (
@@ -18,7 +19,6 @@ from question_generation_service.repositories.exposure_repository import (
 )
 from question_generation_service.repositories.thema_repository import ThemaRepositoryProtocol
 from question_generation_service.schemas.concept import ConceptMapRequest
-from question_generation_service.schemas.exposure import EXPOSURE_TO_P_L0, ExposureLevel
 from question_generation_service.schemas.thema import (
     AmbiguousThema,
     ConfirmRequest,

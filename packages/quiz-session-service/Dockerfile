@@ -20,7 +20,7 @@
   COPY tools/configs ./tools/configs 
   
   # Copy shared package (dependency)
-  COPY packages/shared ./packages/shared
+  COPY packages/shared-typescript ./packages/shared-typescript
   
   # Copy quiz session service
   COPY packages/quiz-session-service ./packages/quiz-session-service
@@ -34,7 +34,7 @@
   FROM base AS build
   
   # Build shared package first (dependency)
-  RUN pnpm --filter @memosphere/shared build
+  RUN pnpm --filter @memosphere/shared-typescript build
   
   # Build quiz session service
   RUN pnpm --filter @memosphere/quiz-session-service build
@@ -61,7 +61,7 @@
   COPY --from=build --chown=quiz-session:nodejs /app/package.json ./package.json
   COPY --from=build --chown=quiz-session:nodejs /app/pnpm-lock.yaml ./pnpm-lock.yaml
   COPY --from=build --chown=quiz-session:nodejs /app/pnpm-workspace.yaml ./pnpm-workspace.yaml
-  COPY --from=build --chown=quiz-session:nodejs /app/packages/shared ./packages/shared
+  COPY --from=build --chown=quiz-session:nodejs /app/packages/shared-typescript ./packages/shared-typescript
   COPY --from=build --chown=quiz-session:nodejs /app/packages/quiz-session-service ./packages/quiz-session-service
   COPY --from=build --chown=quiz-session:nodejs /app/node_modules ./node_modules
   

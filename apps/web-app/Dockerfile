@@ -11,7 +11,7 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY tsconfig.json ./
 COPY tools/configs ./tools/configs
 
-COPY packages/shared ./packages/shared
+COPY packages/shared-typescript ./packages/shared-typescript
 COPY apps/web-app ./apps/web-app
 
 RUN pnpm install --frozen-lockfile --ignore-scripts
@@ -21,7 +21,7 @@ RUN pnpm install --frozen-lockfile --ignore-scripts
 # =============================================================================
 FROM base AS build
 
-RUN pnpm --filter @memosphere/shared build
+RUN pnpm --filter @memosphere/shared-typescript build
 RUN pnpm --filter @memosphere/web-app build
 
 # =============================================================================
@@ -39,7 +39,7 @@ WORKDIR /app
 COPY --from=build --chown=webapp:nodejs /app/package.json ./package.json
 COPY --from=build --chown=webapp:nodejs /app/pnpm-lock.yaml ./pnpm-lock.yaml
 COPY --from=build --chown=webapp:nodejs /app/pnpm-workspace.yaml ./pnpm-workspace.yaml
-COPY --from=build --chown=webapp:nodejs /app/packages/shared ./packages/shared
+COPY --from=build --chown=webapp:nodejs /app/packages/shared-typescript ./packages/shared-typescript
 COPY --from=build --chown=webapp:nodejs /app/apps/web-app ./apps/web-app
 COPY --from=build --chown=webapp:nodejs /app/node_modules ./node_modules
 

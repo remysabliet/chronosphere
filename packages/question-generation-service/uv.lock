@@ -805,7 +805,7 @@ wheels = [
 ]
 
 [[package]]
-name = "memosphere-shared-auth"
+name = "memosphere-shared-python"
 version = "1.0.0"
 source = { directory = "../shared-python" }
 dependencies = [
@@ -1471,7 +1471,7 @@ dependencies = [
     { name = "fastapi" },
     { name = "greenlet" },
     { name = "httpx" },
-    { name = "memosphere-shared-auth" },
+    { name = "memosphere-shared-python" },
     { name = "mistralai" },
     { name = "numpy" },
     { name = "openai" },
@@ -1514,7 +1514,7 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.104.0" },
     { name = "greenlet", specifier = ">=3.4.0" },
     { name = "httpx", specifier = ">=0.25.0" },
-    { name = "memosphere-shared-auth", directory = "../shared-python" },
+    { name = "memosphere-shared-python", directory = "../shared-python" },
     { name = "mistralai", specifier = ">=0.0.12" },
     { name = "numpy", specifier = ">=1.24.0" },
     { name = "openai", specifier = ">=1.3.0" },

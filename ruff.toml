@@ -19,6 +19,7 @@ known-first-party = [
     "learning_engine_service",
     "question_generation_service",
     "memosphere_auth",
+    "memosphere_domain",
 ]
 
 [format]

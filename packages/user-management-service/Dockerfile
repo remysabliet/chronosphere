@@ -20,7 +20,7 @@
 
   
   # Copy shared package (dependency)
-  COPY packages/shared ./packages/shared
+  COPY packages/shared-typescript ./packages/shared-typescript
   COPY packages/user-management-service ./packages/user-management-service
   
   # Install ALL dependencies (dev + prod) for building
@@ -32,7 +32,7 @@
   FROM base AS build
   
   # Build shared package first (dependency)
-  RUN pnpm --filter @memosphere/shared build
+  RUN pnpm --filter @memosphere/shared-typescript build
   
   # Build user-management service
   RUN pnpm --filter @memosphere/user-management-service build
@@ -59,7 +59,7 @@
   COPY --from=build --chown=usermgmt:nodejs /app/package.json ./package.json
   COPY --from=build --chown=usermgmt:nodejs /app/pnpm-lock.yaml ./pnpm-lock.yaml
   COPY --from=build --chown=usermgmt:nodejs /app/pnpm-workspace.yaml ./pnpm-workspace.yaml
-  COPY --from=build --chown=usermgmt:nodejs /app/packages/shared ./packages/shared
+  COPY --from=build --chown=usermgmt:nodejs /app/packages/shared-typescript ./packages/shared-typescript
   COPY --from=build --chown=usermgmt:nodejs /app/packages/user-management-service ./packages/user-management-service
   COPY --from=build --chown=usermgmt:nodejs /app/node_modules ./node_modules
   

@@ -14,7 +14,7 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
-    "@memosphere/shared": "workspace:*",
+    "@memosphere/shared-typescript": "workspace:*",
     "dotenv": "^16.6.1"
   },
   "devDependencies": {

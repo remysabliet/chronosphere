@@ -283,7 +283,7 @@ wheels = [
 ]
 
 [[package]]
-name = "memosphere-shared-auth"
+name = "memosphere-shared-python"
 version = "1.0.0"
 source = { editable = "." }
 dependencies = [

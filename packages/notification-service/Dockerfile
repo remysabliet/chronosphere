@@ -20,7 +20,7 @@
   COPY tools/configs ./tools/configs 
   
   # Copy shared package (dependency)
-  COPY packages/shared ./packages/shared
+  COPY packages/shared-typescript ./packages/shared-typescript
   
   # Copy notification service
   COPY packages/notification-service ./packages/notification-service
@@ -34,7 +34,7 @@
   FROM base AS build
   
   # Build shared package first (dependency)
-  RUN pnpm --filter @memosphere/shared build
+  RUN pnpm --filter @memosphere/shared-typescript build
   
   # Build notification service
   RUN pnpm --filter @memosphere/notification-service build
@@ -61,7 +61,7 @@
   COPY --from=build --chown=notification:nodejs /app/package.json ./package.json
   COPY --from=build --chown=notification:nodejs /app/pnpm-lock.yaml ./pnpm-lock.yaml
   COPY --from=build --chown=notification:nodejs /app/pnpm-workspace.yaml ./pnpm-workspace.yaml
-  COPY --from=build --chown=notification:nodejs /app/packages/shared ./packages/shared
+  COPY --from=build --chown=notification:nodejs /app/packages/shared-typescript ./packages/shared-typescript
   COPY --from=build --chown=notification:nodejs /app/packages/notification-service ./packages/notification-service
   COPY --from=build --chown=notification:nodejs /app/node_modules ./node_modules
   

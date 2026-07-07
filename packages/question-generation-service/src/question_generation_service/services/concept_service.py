@@ -1,5 +1,6 @@
 from typing import Protocol, TypedDict, cast
 
+from memosphere_domain import BloomLevel, ComplexityLevel
 from question_generation_service.clients.mistral_client import chat_complete
 from question_generation_service.prompts.concept_map import PROMPT_2_CONFIG, PROMPT_2_SYSTEM
 from question_generation_service.repositories.learning_unit_repository import (
@@ -8,8 +9,6 @@ from question_generation_service.repositories.learning_unit_repository import (
     LearningUnitRepositoryProtocol,
 )
 from question_generation_service.schemas.concept import (
-    BloomLevel,
-    ComplexityLevel,
     ConceptItem,
     ConceptMapRequest,
     ConceptMapResponse,

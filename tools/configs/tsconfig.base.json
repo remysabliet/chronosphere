@@ -15,8 +15,8 @@
     "incremental": true,
     "baseUrl": ".",
     "paths": {
-      "@memosphere/shared": ["./packages/shared/src"],
-      "@memosphere/shared/*": ["./packages/shared/src/*"]
+      "@memosphere/shared-typescript": ["./packages/shared-typescript/src"],
+      "@memosphere/shared-typescript/*": ["./packages/shared-typescript/src/*"]
     }
   }
 }

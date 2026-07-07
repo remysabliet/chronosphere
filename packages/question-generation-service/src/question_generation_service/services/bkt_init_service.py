@@ -34,5 +34,8 @@ class BktInitService:
             ConceptProgressInput(concept_id=concept_id, bloom_level=bloom_level, p_ln=p_l0)
             for concept_id, bloom_level in concept_bloom_pairs
         ]
-        await self.repository.initialize_batch(user_id, rows)
-        return len(rows)
+        # Pairs already tracked (e.g. re-confirming a thema) are skipped, not
+        # re-seeded — reflect what was actually newly initialized, not what
+        # was merely requested.
+        inserted = await self.repository.initialize_batch(user_id, rows)
+        return len(inserted)

@@ -20,7 +20,7 @@
   COPY tools/configs ./tools/configs 
   
   # Copy shared package (dependency)
-  COPY packages/shared ./packages/shared
+  COPY packages/shared-typescript ./packages/shared-typescript
   
   # Copy content-management service
   COPY packages/content-management-service ./packages/content-management-service
@@ -34,7 +34,7 @@
   FROM base AS build
   
   # Build shared package first (dependency)
-  RUN pnpm --filter @memosphere/shared build
+  RUN pnpm --filter @memosphere/shared-typescript build
   
   # Build content-management service
   RUN pnpm --filter @memosphere/content-management-service build
@@ -61,7 +61,7 @@
   COPY --from=build --chown=contentmgmt:nodejs /app/package.json ./package.json
   COPY --from=build --chown=contentmgmt:nodejs /app/pnpm-lock.yaml ./pnpm-lock.yaml
   COPY --from=build --chown=contentmgmt:nodejs /app/pnpm-workspace.yaml ./pnpm-workspace.yaml
-  COPY --from=build --chown=contentmgmt:nodejs /app/packages/shared ./packages/shared
+  COPY --from=build --chown=contentmgmt:nodejs /app/packages/shared-typescript ./packages/shared-typescript
   COPY --from=build --chown=contentmgmt:nodejs /app/packages/content-management-service ./packages/content-management-service
   COPY --from=build --chown=contentmgmt:nodejs /app/node_modules ./node_modules
   

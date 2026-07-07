@@ -20,7 +20,7 @@
   COPY tools/configs ./tools/configs 
   
   # Copy shared package (dependency)
-  COPY packages/shared ./packages/shared
+  COPY packages/shared-typescript ./packages/shared-typescript
   
   # Copy analytics service
   COPY packages/analytics-service ./packages/analytics-service
@@ -34,7 +34,7 @@
   FROM base AS build
   
   # Build shared package first (dependency)
-  RUN pnpm --filter @memosphere/shared build
+  RUN pnpm --filter @memosphere/shared-typescript build
   
   # Build analytics service
   RUN pnpm --filter @memosphere/analytics-service build
@@ -61,7 +61,7 @@
   COPY --from=build --chown=analytics:nodejs /app/package.json ./package.json
   COPY --from=build --chown=analytics:nodejs /app/pnpm-lock.yaml ./pnpm-lock.yaml
   COPY --from=build --chown=analytics:nodejs /app/pnpm-workspace.yaml ./pnpm-workspace.yaml
-  COPY --from=build --chown=analytics:nodejs /app/packages/shared ./packages/shared
+  COPY --from=build --chown=analytics:nodejs /app/packages/shared-typescript ./packages/shared-typescript
   COPY --from=build --chown=analytics:nodejs /app/packages/analytics-service ./packages/analytics-service
   COPY --from=build --chown=analytics:nodejs /app/node_modules ./node_modules
   

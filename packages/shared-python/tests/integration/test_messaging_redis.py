@@ -24,7 +24,7 @@ async def redis_client() -> AsyncIterator[Redis]:
         REDIS_URL, decode_responses=True, socket_connect_timeout=1
     )
     try:
-        await client.ping()  # pyright: ignore[reportUnknownMemberType]
+        await client.ping()  # pyright: ignore[reportUnknownMemberType, reportGeneralTypeIssues]
     except (RedisError, OSError):
         pytest.skip(f"Redis not reachable at {REDIS_URL}")
     yield client

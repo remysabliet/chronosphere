@@ -2,9 +2,15 @@ from collections.abc import Sequence
 from typing import Protocol, TypedDict
 from uuid import UUID
 
+from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from question_generation_service.models.question import Question, QuestionValidationLog
+from question_generation_service.models.question import (
+    Question,
+    QuestionServingLog,
+    QuestionValidationLog,
+)
 
 
 class QuestionEntryProtocol(Protocol):
@@ -15,7 +21,7 @@ class QuestionEntryProtocol(Protocol):
     question_type: str | None
     question_text: str
     options: list[str] | None
-    correct_answer: str | None
+    correct_answers: list[str] | None
     explanation: str | None
     estimated_time: str | None
     tags: list[str] | None
@@ -28,7 +34,7 @@ class QuestionInput(TypedDict):
     question_type: str
     question_text: str
     options: list[str] | None
-    correct_answer: str
+    correct_answers: list[str]
     explanation: str
     estimated_time: str
     tags: list[str]
@@ -49,6 +55,16 @@ class QuestionRepositoryProtocol(Protocol):
 
     async def log_validations(self, entries: list[ValidationLogInput]) -> None: ...
 
+    async def get_by_concept_bloom_difficulty(
+        self, concept_id: UUID, bloom_level: str, difficulty_tier: str
+    ) -> Sequence[QuestionEntryProtocol]: ...
+
+    async def get_served_question_ids(
+        self, user_id: UUID, question_ids: Sequence[UUID]
+    ) -> set[UUID]: ...
+
+    async def mark_served(self, user_id: UUID, question_ids: Sequence[UUID]) -> None: ...
+
 
 class QuestionRepository:
     def __init__(self, session: AsyncSession):
@@ -63,7 +79,7 @@ class QuestionRepository:
                 question_type=q["question_type"],
                 question_text=q["question_text"],
                 options=q["options"],
-                correct_answer=q["correct_answer"],
+                correct_answers=q["correct_answers"],
                 explanation=q["explanation"],
                 estimated_time=q["estimated_time"],
                 tags=q["tags"],
@@ -87,4 +103,45 @@ class QuestionRepository:
             for entry in entries
         ]
         self.session.add_all(rows)
+        await self.session.commit()
+
+    async def get_by_concept_bloom_difficulty(
+        self, concept_id: UUID, bloom_level: str, difficulty_tier: str
+    ) -> Sequence[QuestionEntryProtocol]:
+        # Only Passed/Warning drafts ever get a row here in the first place
+        # (see QuestionService.generate_batch) — nothing further to filter.
+        result = await self.session.execute(
+            select(Question).where(
+                Question.concept_id == concept_id,
+                Question.bloom_level == bloom_level,
+                Question.difficulty_tier == difficulty_tier,
+            )
+        )
+        return result.scalars().all()  # type: ignore[return-value]
+
+    async def get_served_question_ids(
+        self, user_id: UUID, question_ids: Sequence[UUID]
+    ) -> set[UUID]:
+        if not question_ids:
+            return set()
+        result = await self.session.execute(
+            select(QuestionServingLog.question_id).where(
+                QuestionServingLog.user_id == user_id,
+                QuestionServingLog.question_id.in_(question_ids),
+            )
+        )
+        return set(result.scalars().all())
+
+    async def mark_served(self, user_id: UUID, question_ids: Sequence[UUID]) -> None:
+        if not question_ids:
+            return
+        stmt = (
+            pg_insert(QuestionServingLog)
+            .values([{"user_id": user_id, "question_id": qid} for qid in question_ids])
+            .on_conflict_do_update(
+                index_elements=["user_id", "question_id"],
+                set_={"served_at": pg_insert(QuestionServingLog).excluded.served_at},
+            )
+        )
+        await self.session.execute(stmt)
         await self.session.commit()

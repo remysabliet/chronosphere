@@ -19,7 +19,7 @@ class Question(Base):
     question_type: Mapped[str | None] = mapped_column(String, nullable=True)
     question_text: Mapped[str] = mapped_column(Text, nullable=False)
     options: Mapped[list[str] | None] = mapped_column(JSONB, nullable=True)
-    correct_answer: Mapped[str | None] = mapped_column(String, nullable=True)
+    correct_answers: Mapped[list[str] | None] = mapped_column(JSONB, nullable=True)
     explanation: Mapped[str | None] = mapped_column(Text, nullable=True)
     estimated_time: Mapped[str | None] = mapped_column(String, nullable=True)
     tags: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True)
@@ -41,3 +41,16 @@ class QuestionValidationLog(Base):
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     validation_score: Mapped[float | None] = mapped_column(nullable=True)
     validator_version: Mapped[str | None] = mapped_column(String, nullable=True)
+
+
+class QuestionServingLog(Base):
+    """Tracks which stored questions a user has already been served, so the
+    pool-reuse path can prefer unseen questions for them first. Separate from
+    `user_responses` (actual answers, owned by the future quiz-taking loop).
+    """
+
+    __tablename__ = "question_serving_log"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    question_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    served_at: Mapped[datetime] = mapped_column(server_default=func.now())

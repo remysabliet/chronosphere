@@ -109,12 +109,15 @@ class QuestionRepository:
         self, concept_id: UUID, bloom_level: str, difficulty_tier: str
     ) -> Sequence[QuestionEntryProtocol]:
         # Only Passed/Warning drafts ever get a row here in the first place
-        # (see QuestionService.generate_batch) — nothing further to filter.
+        # (see QuestionService.generate_batch). Public pool only: the NULL
+        # filter both excludes private (document-sourced) questions and lets
+        # Postgres use the partial idx_questions_public_pool index.
         result = await self.session.execute(
             select(Question).where(
                 Question.concept_id == concept_id,
                 Question.bloom_level == bloom_level,
                 Question.difficulty_tier == difficulty_tier,
+                Question.owner_user_id.is_(None),
             )
         )
         return result.scalars().all()  # type: ignore[return-value]

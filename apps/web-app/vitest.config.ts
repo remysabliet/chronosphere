@@ -6,6 +6,7 @@ export default defineConfig({
     include: ['tests/**/*.test.{ts,tsx}'],
     globals: true,
     environment: 'node',
+    setupFiles: ['./tests/setup.ts'],
     coverage: {
       provider: 'v8',
       // Only measure coverage on pure logic — pages/components/server actions
@@ -20,8 +21,36 @@ export default defineConfig({
     },
   },
   resolve: {
-    alias: {
-      '@': path.resolve(__dirname, 'src'),
-    },
+    // Mirrors tsconfig.json's `paths` — order matters, the specific `@/x/*`
+    // entries must be checked before the catch-all `@/*` or they'd never match.
+    alias: [
+      {
+        find: '@/components',
+        replacement: path.resolve(__dirname, 'src/shared/components'),
+      },
+      {
+        find: '@/ui',
+        replacement: path.resolve(__dirname, 'src/shared/components/ui'),
+      },
+      {
+        find: '@/features',
+        replacement: path.resolve(__dirname, 'src/features'),
+      },
+      { find: '@/lib', replacement: path.resolve(__dirname, 'src/shared/lib') },
+      {
+        find: '@/hooks',
+        replacement: path.resolve(__dirname, 'src/shared/hooks'),
+      },
+      {
+        find: '@/stores',
+        replacement: path.resolve(__dirname, 'src/shared/stores'),
+      },
+      {
+        find: '@/types',
+        replacement: path.resolve(__dirname, 'src/shared/types'),
+      },
+      { find: '@/styles', replacement: path.resolve(__dirname, 'src/styles') },
+      { find: '@', replacement: path.resolve(__dirname, 'src') },
+    ],
   },
 });

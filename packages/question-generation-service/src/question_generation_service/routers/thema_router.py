@@ -2,9 +2,10 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends
 
-from question_generation_service.dependencies.auth import CurrentUser, current_user_dependency
+from question_generation_service.dependencies.auth import current_user_dependency
 from question_generation_service.dependencies.rate_limit import ai_rate_limiter
 from question_generation_service.dependencies.services import ExposureServiceDep, ThemaServiceDep
+from question_generation_service.dependencies.user_provisioning import ProvisionedUser
 from question_generation_service.schemas.exposure import ExposureRequest, ExposureResult
 from question_generation_service.schemas.thema import (
     ConfirmRequest,
@@ -37,13 +38,13 @@ async def refine_thema(
 
 @thema_router.post("/{extraction_id}/confirm", response_model=ResolvedThema)
 async def confirm_thema(
-    service: ThemaServiceDep, extraction_id: UUID, body: ConfirmRequest, user: CurrentUser
+    service: ThemaServiceDep, extraction_id: UUID, body: ConfirmRequest, user: ProvisionedUser
 ) -> ResolvedThema:
-    return await service.confirm(extraction_id, body, UUID(user["sub"]))
+    return await service.confirm(extraction_id, body, UUID(user.sub))
 
 
 @thema_router.post("/{extraction_id}/exposure", response_model=ExposureResult)
 async def submit_exposure(
-    service: ExposureServiceDep, extraction_id: UUID, body: ExposureRequest, user: CurrentUser
+    service: ExposureServiceDep, extraction_id: UUID, body: ExposureRequest, user: ProvisionedUser
 ) -> ExposureResult:
-    return await service.submit(extraction_id, UUID(user["sub"]), body)
+    return await service.submit(extraction_id, UUID(user.sub), body)

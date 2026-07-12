@@ -6,14 +6,18 @@ Memosphere is an AI-powered adaptive learning platform that generates personaliz
 
 ## 🎯 MVP Objectives
 
+**Legend:** ✅ done · 🟡 partial · ⬜ not started — full detail and per-step breakdown in [mvp-planning.md § Implementation Status](mvp-planning.md#-implementation-status-as-of-2026-07-09).
+
 - ✅ Convert text into educational questions using AI
 - ✅ Deliver adaptive, personalized quiz experiences
-- ✅ Track user performance with BKT and IRT models
-- ✅ Identify weak knowledge areas and learning gaps
-- ✅ Implement spaced repetition for long-term retention
-- ✅ Provide real-time feedback and progress visualization
-- ✅ Support multiple user roles and access levels
-- ✅ Enable user feedback for continuous improvement
+- 🟡 Track user performance with BKT and IRT models — BKT is live; IRT hasn't been started
+- 🟡 Identify weak knowledge areas and learning gaps — mastery is tracked; no reporting UI yet
+- ⬜ Implement spaced repetition for long-term retention — not started
+- 🟡 Provide real-time feedback and progress visualization — in-session feedback works; no analytics dashboard
+- ⬜ Support multiple user roles and access levels — single implicit learner role only
+- ⬜ Enable user feedback for continuous improvement — no rating/flagging UI
+
+**Only `question-generation-service` (Python/FastAPI) is actually built.** It has absorbed thema extraction, quiz creation, question generation, quiz-taking, and the adaptive/BKT engine. Every other backend service listed below is a health-check-only scaffold.
 
 ---
 
@@ -29,11 +33,10 @@ Memosphere is an AI-powered adaptive learning platform that generates personaliz
 
 ### Backend (Microservices)
 
-- **API Gateway**: Nginx (reverse proxy)
-- **Question Generation Service**: Python + FastAPI
-- **User Management Service**: Node.js + Express
-- **Analytics Service**: Node.js + Express
-- **Content Management Service**: Node.js + Express
+- **API Gateway**: Nginx (reverse proxy) — ✅ running, but bypassed by the only real traffic path
+- **Question Generation Service**: Python + FastAPI — ✅ the only fully implemented backend
+- **Learning Engine Service**: Python + FastAPI — ⬜ health-check stub only
+- **User Management Service**, **Analytics Service**, **Content Management Service**, **Notification Service**, **Quiz Session Service**: originally planned as Node.js — ⬜ all health-check stubs only (plain `http`, not Express/NestJS)
 
 ### AI/NLP
 
@@ -67,6 +70,8 @@ Memosphere is an AI-powered adaptive learning platform that generates personaliz
 ---
 
 ## 📦 MVP Feature Array
+
+Per-feature status is tracked in [mvp-planning.md](mvp-planning.md#-mvp-feature-array) — this list is kept unannotated here to avoid two copies drifting out of sync.
 
 ```ts
 const MVP_FEATURES = [

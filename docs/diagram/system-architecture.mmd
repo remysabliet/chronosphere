@@ -1,0 +1,76 @@
+%% Memosphere — current-state system architecture.
+%% Grounded in code as of 2026-07-08: infrastructure/docker/docker-compose.yml,
+%% infrastructure/nginx/nginx.conf, and the question-generation-service source tree.
+%% Solid edges = real, exercised code paths. Dashed edges = wired in config
+%% (nginx.conf / docker-compose) but not on the path any implemented feature uses.
+%% Dashed/grey nodes = services that only expose a health-check stub today.
+flowchart TB
+    Learner(["Learner / Admin / Moderator"])
+
+    subgraph Client["Client"]
+        WebApp["web-app<br/>Next.js + NextAuth"]
+    end
+
+    Cognito["Amazon Cognito<br/>Hosted UI / OIDC (live)"]
+
+    subgraph Edge["Edge — nginx (docker-compose)"]
+        Gateway["NGINX Gateway<br/>routes /api/* per nginx.conf"]
+    end
+
+    subgraph QGS["question-generation-service — FastAPI :8001 (the one fully-built backend)"]
+        Routers["HTTP routers<br/>thema / wizard / concept /<br/>quiz / session / questions / moderation"]
+        QuizSvc["QuizService.create()"]
+        SessionSvc["SessionService"]
+        Relay["OutboxRelay<br/>background asyncio task"]
+        Worker["GenerationWorker<br/>background asyncio task"]
+    end
+
+    Mistral["Mistral Large API<br/>(live, external)"]
+
+    subgraph Data["Data Layer (docker-compose containers)"]
+        Postgres[("PostgreSQL<br/>quizzes, outbox, questions,<br/>learning_units, sessions, users...")]
+        Redis[("Redis Streams<br/>topic: jobs:generate-questions")]
+    end
+
+    Migration["migration-service<br/>one-shot job, runs before app services"]
+
+    subgraph Stubs["Scaffolded services — health-check only, no business logic yet"]
+        UserMgmt["user-management-service<br/>NestJS :3001"]
+        ContentMgmt["content-management-service<br/>NestJS :3002"]
+        QuizSession["quiz-session-service<br/>NestJS :3003"]
+        Analytics["analytics-service<br/>NestJS :3004"]
+        Notification["notification-service<br/>NestJS :3005"]
+        LearningEngine["learning-engine-service<br/>FastAPI :8002 — BKT/IRT TODO"]
+    end
+
+    Learner --> WebApp
+    WebApp -- "1: OAuth2/OIDC login" --> Cognito
+    Cognito -- "2: ID token + refresh token" --> WebApp
+    WebApp -- "3: server actions, Bearer idToken<br/>(calls :8001 directly, bypasses Gateway)" --> Routers
+    Routers -. "verifies JWT via cached JWKS" .-> Cognito
+
+    WebApp -. "configured route, unused by real traffic" .-> Gateway
+    Gateway -. "nginx.conf upstreams" .-> UserMgmt
+    Gateway -. "nginx.conf upstreams" .-> ContentMgmt
+    Gateway -. "nginx.conf upstreams" .-> QuizSession
+    Gateway -. "nginx.conf upstreams" .-> Analytics
+    Gateway -. "nginx.conf upstreams" .-> Notification
+    Gateway -. "nginx.conf upstreams" .-> LearningEngine
+    Gateway -. "nginx.conf upstreams" .-> Routers
+
+    Routers --> QuizSvc
+    Routers --> SessionSvc
+
+    QuizSvc -- "4: INSERT quiz + outbox row(s)<br/>same transaction" --> Postgres
+    Relay -- "5: poll unpublished outbox rows" --> Postgres
+    Relay -- "6: XADD jobs:generate-questions" --> Redis
+    Worker -- "7: XREADGROUP (consumer group)" --> Redis
+    Worker -- "8: generate + judge" --> Mistral
+    Worker -- "9: store questions,<br/>increment quiz progress" --> Postgres
+
+    SessionSvc -- "sessions, submitted answers" --> Postgres
+
+    Migration -- "schema + seed" --> Postgres
+
+    classDef stub stroke-dasharray: 4 4,fill:#eee,color:#666,stroke:#999;
+    class UserMgmt,ContentMgmt,QuizSession,Analytics,Notification,LearningEngine stub;

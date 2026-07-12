@@ -14,14 +14,56 @@
 
 ## 🎯 MVP Objectives
 
+**Legend:** ✅ done · 🟡 partial · ⬜ not started — see [Implementation Status](#-implementation-status-as-of-2026-07-09) below for detail.
+
 - ✅ Convert text into educational questions using AI
 - ✅ Deliver adaptive, personalized quiz experiences
-- ✅ Track user performance with BKT and IRT models
-- ✅ Identify weak knowledge areas and learning gaps
-- ✅ Implement spaced repetition for long-term retention
-- ✅ Provide real-time feedback and progress visualization
-- ✅ Support multiple user roles and access levels
-- ✅ Enable user feedback for continuous improvement
+- 🟡 Track user performance with BKT and IRT models — BKT is live; IRT hasn't been started
+- 🟡 Identify weak knowledge areas and learning gaps — mastery is tracked per concept-Bloom pair; nothing surfaces it in a UI yet
+- ⬜ Implement spaced repetition for long-term retention — not started
+- 🟡 Provide real-time feedback and progress visualization — in-session feedback works; no analytics dashboard
+- ⬜ Support multiple user roles and access levels — single implicit learner role only, no Admin/Moderator flows
+- ⬜ Enable user feedback for continuous improvement — no rating/flagging UI
+
+---
+
+## 📍 Implementation Status (as of 2026-07-09)
+
+**One service is real; the rest are scaffolds.** `question-generation-service` (Python/FastAPI) has absorbed nearly the entire backend — thema extraction, quiz creation, question generation, quiz-taking, and the adaptive/BKT engine all live there. `user-management-service`, `content-management-service`, `quiz-session-service`, `analytics-service`, and `notification-service` are unstarted: each is a single `index.ts` that answers `/health` via plain Node `http` — not NestJS or Express, despite the tech stack listed below. `learning-engine-service` is a matching FastAPI stub ("BKT and IRT — Coming Soon"). See [docs/diagram/architecture.md](../diagram/architecture.md) for the full topology, including which edges are real traffic vs. configured-but-unused.
+
+### Core adaptive loop (main-workflow.md steps)
+
+| Step | Covers                                                    | Status                                                                                                                     |
+| ---- | --------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| 1-3  | Thema/topic extraction, exposure capture, placement probe | ✅ Done — `thema_router`, `wizard_router`, `exposure_service`                                                              |
+| 4    | Quiz session initialization                               | ✅ Done — `POST /v1/quizzes`, outbox-driven                                                                                |
+| 5-6  | Exposure → P(L0), concept-Bloom mapping                   | ✅ Done — `ConceptService`, `EXPOSURE_TO_P_L0`                                                                             |
+| 7    | BKT initialization                                        | ✅ Done — `BktInitService`, seeds `concept_progress_tracker`                                                               |
+| 8    | Question generation & pooling                             | ✅ Done — outbox relay + `GenerationWorker`, batched Mistral pipeline, plus a live-LLM fallback when a bucket is exhausted |
+| 8A   | Question validation (structural + LLM judge)              | ✅ Done — `question_validation_service`, Prompt 4 judge                                                                    |
+| 9    | Response logging                                          | ✅ Done — `user_responses`                                                                                                 |
+| 10   | BKT model update                                          | ✅ Done — `MasteryService.record_attempt`                                                                                  |
+| 11   | Adaptive decision engine (Remediate/Practice/Advance)     | ✅ Done — `AdaptiveSelectionService`, Bloom-ladder climbing, live-LLM fallback                                             |
+| A-E  | Spaced repetition / FSRS review scheduling                | ⬜ Not started — `mastery_log`, `fsrs_state`, `review_queue` tables exist in migrations; no application code touches them  |
+| —    | IRT (Item Response Theory)                                | ⬜ Not started — referenced only in a stub docstring, no implementation                                                    |
+
+### Frontend
+
+- ✅ Auth (NextAuth + Cognito), quiz-creation chat wizard, quiz library, quiz detail with live progress polling, session runner (answer → feedback → next question) — all wired to the real API.
+- ⬜ Profile, Analytics, and Memocards pages exist as routes but render "Coming Soon" — no UI behind them.
+- ⬜ Manual quiz creation (`/quiz/new/manual`) is a stub; the chat wizard is the only working creation path.
+
+### Infrastructure
+
+- ✅ Local dev: `docker-compose` (Postgres, Redis, nginx, all 9 services) — real and runnable.
+- 🟡 nginx gateway is correctly configured for all 7 backend services, but the only real traffic (web-app → question-generation-service) bypasses it entirely.
+- ⬜ AWS target infra (EC2 Kubernetes, RDS, ElastiCache, ECR, self-hosted CI runner) — no Terraform/IaC or k8s manifests exist. CI (`ci.yml`) currently only lints/type-checks/tests on GitHub-hosted runners.
+
+### Known gaps worth calling out
+
+- No rate limiting on the live-LLM fallback inside session-taking (only the direct `/v1/questions/generate` endpoint is rate-limited today).
+- No RBAC/roles beyond a single implicit learner role.
+- No question rating/flagging UI; `moderation_router` is an empty `APIRouter` with no endpoints registered.
 
 ---
 
@@ -37,11 +79,14 @@
 
 ### Backend (Microservices)
 
-- **API Gateway**: Nginx (reverse proxy)
-- **Question Generation Service**: Python + FastAPI
-- **User Management Service**: Node.js + Express
-- **Analytics Service**: Node.js + Express
-- **Content Management Service**: Node.js + Express
+- **API Gateway**: Nginx (reverse proxy) — ✅ running, configured for all services, but bypassed by the only real traffic path (see Implementation Status)
+- **Question Generation Service**: Python + FastAPI — ✅ the only fully implemented backend; owns thema/quiz/question/session/BKT/adaptive logic
+- **Learning Engine Service**: Python + FastAPI — ⬜ health-check stub only
+- **Quiz Session Service**: originally planned as Node.js — ⬜ health-check stub only (its intended scope now lives in Question Generation Service)
+- **User Management Service**: originally planned as Node.js — ⬜ health-check stub only (plain `http`, not Express/NestJS)
+- **Analytics Service**: originally planned as Node.js — ⬜ health-check stub only (plain `http`, not Express/NestJS)
+- **Content Management Service**: originally planned as Node.js — ⬜ health-check stub only (plain `http`, not Express/NestJS)
+- **Notification Service**: originally planned as Node.js — ⬜ health-check stub only (plain `http`, not Express/NestJS)
 
 ### AI/NLP
 
@@ -76,45 +121,49 @@
 
 ## 📦 MVP Feature Array
 
+Status tags below: ✅ done · 🟡 partial · ⬜ not started (see [Implementation Status](#-implementation-status-as-of-2026-07-09)).
+
 ```ts
 const MVP_FEATURES = [
   // User Management
-  'User Registration & Login (OAuth2 Social Login)',
-  'User Profile Creation (Age, Profession, Education)',
-  'Role-Based Access Control (Learner, Admin, Moderator)',
+  'User Registration & Login (OAuth2 Social Login)', // ✅ Cognito + NextAuth
+  'User Profile Creation (Age, Profession, Education)', // ⬜ Profile page is a stub
+  'Role-Based Access Control (Learner, Admin, Moderator)', // ⬜ single implicit learner role only
 
   // Content Input & Processing
-  'Text Input for Question Generation',
-  'AI-Powered Question Generation from Text',
-  'Question Validation & Quality Control',
+  'Text Input for Question Generation', // ✅ thema/wizard flow
+  'AI-Powered Question Generation from Text', // ✅ Mistral pipeline, async + live fallback
+  'Question Validation & Quality Control', // ✅ structural checks + LLM judge
 
   // Learning Experience
-  'Interactive Quiz Sessions',
-  'Multiple Question Types (MCQ, True/False, Fill-in-the-blanks)',
-  'Adaptive Question Selection',
-  'Real-time Performance Feedback',
+  'Interactive Quiz Sessions', // ✅ start/answer/summary all live
+  'Multiple Question Types (MCQ, True/False, Fill-in-the-blanks)', // ✅ MCQ/MCQMultiSelect/TrueFalse/FillInBlank
+  'Adaptive Question Selection', // ✅ Step 11 Remediate/Practice/Advance engine
+  'Real-time Performance Feedback', // ✅ correctness + explanation after every answer
 
   // Progress Tracking
-  'Session History & Analytics',
-  'Performance Metrics (Score, Response Time)',
-  'Weak Area Identification',
-  'Learning Progress Visualization',
+  'Session History & Analytics', // ⬜ Analytics page is a stub
+  'Performance Metrics (Score, Response Time)', // 🟡 captured in user_responses/SessionSummary; no metrics UI
+  'Weak Area Identification', // ⬜ concept_progress_tracker data exists; nothing surfaces it
+  'Learning Progress Visualization', // ⬜ Analytics page is a stub
 
   // Spaced Repetition
-  'Memory Refresh Module',
-  'Review Queue Management',
-  'Mastery Tracking per Concept',
+  'Memory Refresh Module', // ⬜ not started
+  'Review Queue Management', // ⬜ review_queue table exists, unused
+  'Mastery Tracking per Concept', // ✅ concept_progress_tracker + BKT update
 
   // User Feedback
-  'Question Rating System (1-5 stars)',
-  'Question Flagging (Confusing, Incorrect, etc.)',
-  'Session Completion Feedback',
+  'Question Rating System (1-5 stars)', // ⬜ not started
+  'Question Flagging (Confusing, Incorrect, etc.)', // ⬜ moderation_router has no endpoints yet
+  'Session Completion Feedback', // 🟡 SessionSummary API exists; completion UI not verified rich
 ];
 ```
 
 ---
 
 ## 🗓️ Development Phases & Time Estimates
+
+> **Note:** this phase breakdown and its hour estimates are the original pre-build plan and haven't been re-scoped against actual progress. In practice, most of Phase 2.1-2.2's AI integration and learning-algorithm work (question generation, validation, BKT, adaptive selection) is already done, folded entirely into Question Generation Service rather than split across separate services as planned. See [Implementation Status](#-implementation-status-as-of-2026-07-09) above for what's actually built.
 
 ### **Phase 1: Project Foundation & Local Development Setup**
 

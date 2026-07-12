@@ -163,6 +163,24 @@ This CI/CD pipeline is designed to be **cost-effective**, **secure**, and **scal
 > - Secure and private
 > - Scales with your EC2 and Kubernetes footprint
 
+# Message Queue (Job Dispatch)
+
+**Current**: Redis Streams with consumer groups (`memosphere_messaging.RedisStreamsBroker`), used for `jobs:generate-questions`. Chosen for MVP because it's already-running infra (zero new service). The `Broker` Protocol is the seam — application code (workers, services) never touches Redis directly, so swapping the transport is contained to one new class.
+
+**Known gap (found 2026-07-11)**: dev Redis runs without AOF, and `docker compose down -v` wipes the named volume — a stuck/pending job can be lost outright. Also, `consume_once` never redelivered pending entries despite the module's docstring promising it; `reclaim_stale()` (XAUTOCLAIM-based) plus a `generation_job_completions` idempotency table now cover automatic retry without double-counting quiz progress. This closes the _automatic-retry_ gap; it does not by itself fix the _volume-gets-deleted_ durability gap below.
+
+**Options for production durability** (evaluated 2026-07-11, undecided):
+
+| Option                                 | Cost                                                                                                      | Dev/Prod Parity                                                                                        | Notes                                                                                                                             |
+| -------------------------------------- | --------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
+| Self-hosted Redis + AOF                | ~$0–2/mo marginal                                                                                         | Same code path everywhere                                                                              | Cheapest, but ops burden (backups, HA, the `down -v` footgun) stays in-house                                                      |
+| AWS SQS                                | ~$0/mo at low volume; ~$40/mo per 100M requests, ~$120/mo per 100M actual jobs (3 requests/job lifecycle) | New `SQSBroker` needed — dev (Redis) and prod (SQS) diverge unless dev also runs SQS (e.g. LocalStack) | Cheapest managed option; fully durable; built-in DLQ/redrive replaces `reclaim_stale()`                                           |
+| AWS MemoryDB for Redis                 | ~$44/mo single node (no HA); ~$630+/mo real Multi-AZ cluster                                              | Same `RedisStreamsBroker` code everywhere — only the connection target changes                         | Most expensive; purpose-built for durability (not just cache+AOF)                                                                 |
+| ElastiCache for Redis (persistence on) | ~$12/mo smallest node                                                                                     | Same code path                                                                                         | Cache product with AOF bolted on, not a durable-by-design primary store                                                           |
+| RabbitMQ (self-hosted)                 | ~$0–2/mo marginal                                                                                         | Same-broker parity if kept everywhere                                                                  | Ruled out: a _third_ stateful service to operate with no existing foothold (team already runs Redis, already has AWS via Cognito) |
+
+AWS is already in the stack (Cognito for auth), which favors SQS or MemoryDB over introducing a wholly new vendor. **No decision made yet** — revisit before this queue needs to carry production volume.
+
 # AI/ML Services
 
 **Primary Choice: Mistral Large API**

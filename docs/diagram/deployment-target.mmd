@@ -1,0 +1,43 @@
+%% Memosphere — planned AWS deployment target, per docs/architecture/infra-architecture.md.
+%% None of this is provisioned yet: no Terraform/IaC or k8s manifests exist in the repo,
+%% and .github/workflows/ci.yml only runs lint/type-check/tests on GitHub-hosted runners
+%% today. Today's actual runtime is infrastructure/docker/docker-compose.yml
+%% (see system-architecture.mmd). This diagram is the target to build towards, not current state.
+flowchart TB
+    Dev["Developer"] -- "git push" --> GitHub["GitHub<br/>(source control)"]
+
+    subgraph CICD["CI/CD — planned"]
+        Actions["GitHub Actions<br/>self-hosted runner on EC2"]
+        ECR[("Amazon ECR<br/>private image registry")]
+    end
+
+    GitHub -- "triggers workflow" --> Actions
+    Actions -- "build + push image" --> ECR
+
+    subgraph AWS["AWS — planned target infra"]
+        subgraph K8s["Kubernetes on EC2 (manual scaling)"]
+            Gateway["NGINX Gateway"]
+            Services["Application pods:<br/>web-app + all microservices<br/>(same topology as system-architecture.mmd)"]
+            MigrationJob["migration-service<br/>(Job, runs on deploy)"]
+        end
+        RDS[("Amazon RDS PostgreSQL<br/>db.t4g.micro, Free Tier")]
+        ElastiCache[("Amazon ElastiCache Redis<br/>optional for MVP")]
+        S3[("Amazon S3<br/>object storage, Free Tier")]
+        CognitoTarget["Amazon Cognito<br/>OAuth2 (already live today)"]
+    end
+
+    Mistral["Mistral Large API<br/>(external, already live today)"]
+
+    Actions -- "kubectl / Helm apply" --> K8s
+    ECR -- "pulled by" --> Services
+
+    Gateway --> Services
+    Services --> RDS
+    Services -.-> ElastiCache
+    Services --> CognitoTarget
+    Services -- "question generation" --> Mistral
+    Services -.-> S3
+    MigrationJob --> RDS
+
+    classDef planned stroke-dasharray: 4 4,fill:#eee,color:#666,stroke:#999;
+    class Actions,ECR,Gateway,Services,MigrationJob,RDS,ElastiCache,S3 planned;

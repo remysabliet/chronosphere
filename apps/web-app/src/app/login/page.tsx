@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 
 import { auth, signIn } from '@/lib/auth';
-import { ROUTES } from '@/lib/constants';
+import { DEFAULT_AUTHENTICATED_ROUTE } from '@/lib/constants';
 import { Button } from '@/ui/button';
 import {
   Card,
@@ -16,6 +16,13 @@ export const metadata: Metadata = {
   title: 'Sign in',
 };
 
+// Only same-site relative paths are safe to redirect to — an absolute or
+// protocol-relative callbackUrl would let an attacker send an authenticated
+// user off-site (open redirect).
+function isSafeCallbackUrl(url: string | undefined): url is string {
+  return !!url && url.startsWith('/') && !url.startsWith('//');
+}
+
 export default async function LoginPage({
   searchParams,
 }: {
@@ -23,9 +30,12 @@ export default async function LoginPage({
 }) {
   const session = await auth();
   const { callbackUrl } = await searchParams;
+  const redirectTo = isSafeCallbackUrl(callbackUrl)
+    ? callbackUrl
+    : DEFAULT_AUTHENTICATED_ROUTE;
 
   if (session) {
-    redirect(callbackUrl ?? ROUTES.DASHBOARD);
+    redirect(redirectTo);
   }
 
   return (
@@ -41,9 +51,7 @@ export default async function LoginPage({
           <form
             action={async () => {
               'use server';
-              await signIn('cognito', {
-                redirectTo: callbackUrl ?? ROUTES.DASHBOARD,
-              });
+              await signIn('cognito', { redirectTo });
             }}
           >
             <Button type='submit' className='w-full' size='lg'>

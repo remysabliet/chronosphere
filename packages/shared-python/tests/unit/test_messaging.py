@@ -5,7 +5,9 @@ import pytest
 
 from memosphere_messaging import (
     PAYLOAD_FIELD,
+    AutoclaimResult,
     Message,
+    PendingEntry,
     RedisStreamsBroker,
     StreamBatch,
 )
@@ -14,12 +16,21 @@ pytestmark = pytest.mark.asyncio
 
 
 class FakeStreams:
-    def __init__(self, batch: StreamBatch | None = None, group_error: str | None = None):
+    def __init__(
+        self,
+        batch: StreamBatch | None = None,
+        group_error: str | None = None,
+        claimable: list[tuple[str, dict[str, str]]] | None = None,
+        delivery_counts: dict[str, int] | None = None,
+    ):
         self.batch = batch
         self.group_error = group_error
         self.added: list[tuple[str, dict[str, str]]] = []
         self.acked: list[tuple[str, str, tuple[str, ...]]] = []
         self.groups: list[tuple[str, str, str, bool]] = []
+        self.claimable = claimable or []
+        self.delivery_counts = delivery_counts or {}
+        self.autoclaim_calls: list[tuple[str, str, str, int]] = []
 
     async def xadd(self, name: str, fields: Mapping[str, str]) -> str:
         self.added.append((name, dict(fields)))
@@ -44,6 +55,23 @@ class FakeStreams:
     async def xack(self, name: str, groupname: str, *ids: str) -> int:
         self.acked.append((name, groupname, ids))
         return len(ids)
+
+    async def xautoclaim(
+        self,
+        name: str,
+        groupname: str,
+        consumername: str,
+        min_idle_time: int,
+        start_id: str = "0-0",
+        count: int | None = None,
+    ) -> AutoclaimResult:
+        self.autoclaim_calls.append((name, groupname, consumername, min_idle_time))
+        return ("0-0", self.claimable, [])
+
+    async def xpending_range(
+        self, name: str, groupname: str, min: str, max: str, count: int
+    ) -> list[PendingEntry]:
+        return [{"message_id": min, "times_delivered": self.delivery_counts.get(min, 1)}]
 
 
 def entry(message_id: str, raw: str) -> tuple[str, dict[str, str]]:
@@ -151,3 +179,51 @@ async def test_missing_payload_field_goes_to_dlq():
 
     assert await broker.consume_once("events:x", "g", "c1", handler) == 0
     assert client.added[0][0] == "events:x.dlq"
+
+
+async def test_reclaim_stale_retries_and_acks_a_claimed_entry():
+    client = FakeStreams(claimable=[entry("1-0", json.dumps({"a": 1}))])
+    broker = RedisStreamsBroker(client)
+    seen: list[Message] = []
+
+    async def handler(message: Message) -> None:
+        seen.append(message)
+
+    processed = await broker.reclaim_stale("jobs:x", "g", "c2", handler, min_idle_ms=300_000)
+
+    assert processed == 1
+    assert seen[0].payload == {"a": 1}
+    assert client.acked == [("jobs:x", "g", ("1-0",))]
+    assert client.autoclaim_calls == [("jobs:x", "g", "c2", 300_000)]
+
+
+async def test_reclaim_stale_leaves_a_still_failing_entry_pending():
+    client = FakeStreams(claimable=[entry("1-0", json.dumps({"a": 1}))])
+    broker = RedisStreamsBroker(client)
+
+    async def handler(message: Message) -> None:
+        raise ValueError("still rate-limited")
+
+    processed = await broker.reclaim_stale("jobs:x", "g", "c2", handler, min_idle_ms=300_000)
+
+    assert processed == 0
+    assert client.acked == []
+
+
+async def test_reclaim_stale_dead_letters_after_max_deliveries_without_calling_handler():
+    client = FakeStreams(
+        claimable=[entry("1-0", json.dumps({"a": 1}))],
+        delivery_counts={"1-0": 6},
+    )
+    broker = RedisStreamsBroker(client)
+
+    async def handler(message: Message) -> None:
+        raise AssertionError("a poison message must not keep reaching the handler")
+
+    processed = await broker.reclaim_stale(
+        "jobs:x", "g", "c2", handler, min_idle_ms=300_000, max_deliveries=5
+    )
+
+    assert processed == 0
+    assert client.added == [("jobs:x.dlq", {PAYLOAD_FIELD: json.dumps({"a": 1})})]
+    assert client.acked == [("jobs:x", "g", ("1-0",))]

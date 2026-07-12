@@ -39,6 +39,12 @@ class Message:
 MessageHandler = Callable[[Message], Awaitable[None]]
 
 
+# Shape redis-py's XAUTOCLAIM returns: (next_cursor, claimed_entries, deleted_ids).
+AutoclaimResult = tuple[str, list[tuple[str, dict[str, str]]], list[str]]
+# Shape redis-py's XPENDING RANGE returns per entry.
+PendingEntry = Mapping[str, object]
+
+
 class StreamsClient(Protocol):
     """The slice of redis.asyncio.Redis this module uses — structural, so the
     real client and test fakes both fit without a hard redis dependency here.
@@ -59,6 +65,20 @@ class StreamsClient(Protocol):
 
     async def xack(self, name: str, groupname: str, *ids: str) -> int: ...
 
+    async def xautoclaim(
+        self,
+        name: str,
+        groupname: str,
+        consumername: str,
+        min_idle_time: int,
+        start_id: str = "0-0",
+        count: int | None = None,
+    ) -> AutoclaimResult: ...
+
+    async def xpending_range(
+        self, name: str, groupname: str, min: str, max: str, count: int
+    ) -> list[PendingEntry]: ...
+
 
 class Broker(Protocol):
     async def publish(self, topic: str, payload: Payload) -> str: ...
@@ -73,6 +93,17 @@ class Broker(Protocol):
         handler: MessageHandler,
         count: int = 10,
         block_ms: int = 5000,
+    ) -> int: ...
+
+    async def reclaim_stale(
+        self,
+        topic: str,
+        group: str,
+        consumer: str,
+        handler: MessageHandler,
+        min_idle_ms: int,
+        count: int = 10,
+        max_deliveries: int = 5,
     ) -> int: ...
 
 
@@ -108,19 +139,70 @@ class RedisStreamsBroker:
         processed = 0
         for _stream, entries in batch:
             for message_id, fields in entries:
-                payload = self._decode(fields.get(PAYLOAD_FIELD))
-                if payload is None:
-                    await self._dead_letter(topic, group, message_id, fields)
-                    continue
-                try:
-                    await handler(Message(id=message_id, topic=topic, payload=payload))
-                except Exception:
-                    # No ack: stays pending for redelivery/claiming.
-                    logger.exception("handler failed for %s on %s", message_id, topic)
-                    continue
-                await self.client.xack(topic, group, message_id)
+                if await self._process_entry(topic, group, message_id, fields, handler):
+                    processed += 1
+        return processed
+
+    async def reclaim_stale(
+        self,
+        topic: str,
+        group: str,
+        consumer: str,
+        handler: MessageHandler,
+        min_idle_ms: int,
+        count: int = 10,
+        max_deliveries: int = 5,
+    ) -> int:
+        """Claims entries idle longer than min_idle_ms and retries them
+        through `handler` — the redelivery path this module's docstring
+        promises ("a crash mid-handler leaves it pending for redelivery")
+        but consume_once alone never performs, since XREADGROUP with '>'
+        only ever reads brand-new entries. Call this periodically alongside
+        consume_once, not instead of it. A message still failing past
+        max_deliveries is dead-lettered instead of retried forever.
+        """
+        _next_id, claimed, _deleted = await self.client.xautoclaim(
+            topic, group, consumer, min_idle_time=min_idle_ms, start_id="0-0", count=count
+        )
+        processed = 0
+        for message_id, fields in claimed:
+            deliveries = await self._delivery_count(topic, group, message_id)
+            if deliveries > max_deliveries:
+                logger.error(
+                    "dead-lettering %s from %s after %d delivery attempts",
+                    message_id,
+                    topic,
+                    deliveries,
+                )
+                await self._dead_letter(topic, group, message_id, fields)
+                continue
+            if await self._process_entry(topic, group, message_id, fields, handler, deliveries):
                 processed += 1
         return processed
+
+    async def _process_entry(
+        self,
+        topic: str,
+        group: str,
+        message_id: str,
+        fields: dict[str, str],
+        handler: MessageHandler,
+        delivery: int = 1,
+    ) -> bool:
+        payload = self._decode(fields.get(PAYLOAD_FIELD))
+        if payload is None:
+            await self._dead_letter(topic, group, message_id, fields)
+            return False
+        try:
+            await handler(Message(id=message_id, topic=topic, payload=payload))
+        except Exception:
+            # No ack: stays pending for redelivery/claiming.
+            logger.exception(
+                "handler failed for %s on %s (delivery #%d)", message_id, topic, delivery
+            )
+            return False
+        await self.client.xack(topic, group, message_id)
+        return True
 
     @staticmethod
     def _decode(raw: str | None) -> dict[str, JsonValue] | None:
@@ -133,6 +215,13 @@ class RedisStreamsBroker:
         if not isinstance(decoded, dict):
             return None
         return decoded
+
+    async def _delivery_count(self, topic: str, group: str, message_id: str) -> int:
+        entries = await self.client.xpending_range(topic, group, message_id, message_id, count=1)
+        if not entries:
+            return 1
+        times_delivered = entries[0].get("times_delivered", 1)
+        return int(times_delivered) if isinstance(times_delivered, int | float | str) else 1
 
     async def _dead_letter(
         self, topic: str, group: str, message_id: str, fields: dict[str, str]

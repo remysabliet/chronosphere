@@ -58,6 +58,13 @@ const nextConfig = {
         destination: '/',
         permanent: true,
       },
+      {
+        // No standalone sign-up page exists — Cognito's Hosted UI handles
+        // both sign-in and sign-up from the login flow.
+        source: '/register',
+        destination: '/login',
+        permanent: false,
+      },
     ];
   },
 };

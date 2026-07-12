@@ -15,7 +15,10 @@ services:
   # =============================================================================
 
   postgres:
-    image: postgres:17-alpine
+    # pgvector/pgvector:*-pg17 is a drop-in for postgres:17 with the pgvector
+    # extension pre-compiled in (see docs/architecture/question-diversity-and-dedup.md) —
+    # same Postgres 17, same data directory layout, just `CREATE EXTENSION vector;` away.
+    image: pgvector/pgvector:0.8.5-pg17-bookworm
     container_name: memosphere-postgres-${ENVIRONMENT:-development}
     environment:
       POSTGRES_DB: memosphere_${ENVIRONMENT:-development}

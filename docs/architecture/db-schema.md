@@ -93,12 +93,14 @@ complexity_level TEXT REFERENCES bkt_parameter_defaults(complexity_level),
 created_by TEXT,
 created_at DATETIME NOT NULL,
 author TEXT,
-version TEXT
+version TEXT,
+embedding VECTOR(1024) -- mistral-embed vector; NULL until embedded (see question-diversity-and-dedup.md)
 );
 
 -- Indexes for learning_units
 CREATE INDEX idx_learning_units_thema_topic ON learning_units(thema, topic);
 CREATE INDEX idx_learning_units_concept ON learning_units(concept_name);
+CREATE INDEX idx_learning_units_embedding_hnsw ON learning_units USING hnsw (embedding vector_cosine_ops);
 
 -- Constraints for learning_units
 ALTER TABLE learning_units ADD CONSTRAINT fk_learning_units_complexity
@@ -121,7 +123,11 @@ source TEXT,
 version TEXT,
 created_by TEXT,
 owner_user_id UUID, -- NULL = public shared pool; non-NULL = private to that user (document-sourced)
-created_at DATETIME NOT NULL
+created_at DATETIME NOT NULL,
+embedding VECTOR(1024), -- mistral-embed vector; NULL until embedded (see question-diversity-and-dedup.md)
+question_text_norm_hash TEXT GENERATED ALWAYS AS (
+md5(lower(regexp_replace(question_text, '\s+', ' ', 'g')))
+) STORED -- cheap write-time exact-duplicate guard for the public pool
 );
 
 -- Indexes for questions (partial per pool: public scans never touch private rows)
@@ -129,6 +135,11 @@ CREATE INDEX idx_questions_public_pool ON questions(concept_id, bloom_level, dif
 WHERE owner_user_id IS NULL;
 CREATE INDEX idx_questions_private_pool ON questions(owner_user_id, concept_id, bloom_level, difficulty_tier)
 WHERE owner_user_id IS NOT NULL;
+CREATE INDEX idx_questions_embedding_hnsw ON questions USING hnsw (embedding vector_cosine_ops);
+-- Public-pool exact-duplicate guard: same concept/bloom/difficulty/normalized text
+CREATE UNIQUE INDEX idx_questions_concept_text_dedup
+ON questions (concept_id, bloom_level, difficulty_tier, question_text_norm_hash)
+WHERE owner_user_id IS NULL;
 
 -- Constraints for questions
 ALTER TABLE questions ADD CONSTRAINT chk_questions_difficulty_tier
@@ -161,6 +172,15 @@ published_at DATETIME -- NULL until the relay has published it
 
 CREATE INDEX idx_outbox_unpublished ON outbox(id) WHERE published_at IS NULL;
 
+-- Claim check for one jobs:generate-questions stream message: the worker
+-- inserts message_id here (ON CONFLICT DO NOTHING) before incrementing
+-- quizzes.generation_questions_ready, so at-least-once redelivery can't
+-- double-count a batch that already completed.
+CREATE TABLE generation_job_completions (
+message_id TEXT PRIMARY KEY,
+completed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 -- A quiz is a user-owned configuration (thema + wizard choices), not the
 -- questions: questions live in the shared/private pools, sessions are runs
 -- of a quiz. visibility gates sharing; private quizzes are owner-only.
@@ -173,6 +193,7 @@ question_types TEXT[] NOT NULL, -- allowed types chosen in the wizard
 question_count INT, -- desired size; NULL when time-based
 time_limit_minutes INT, -- NULL when count-based
 visibility TEXT NOT NULL DEFAULT 'private', -- 'private', 'shared', 'public'
+generation_questions_ready INT NOT NULL DEFAULT 0, -- incremented by the worker as jobs:generate-questions batches complete
 created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -198,6 +219,8 @@ FOREIGN KEY (owner_user_id) REFERENCES users(user_id) ON DELETE CASCADE;
 CREATE TABLE quiz_sessions (
 session_id UUID PRIMARY KEY,
 user_id UUID NOT NULL,
+quiz_id UUID, -- the quiz this session is a run of; NULL for non-quiz session types
+question_ids UUID[] NOT NULL DEFAULT '{}', -- frozen, ordered question set chosen at session start
 thema TEXT,
 topic TEXT,
 session_type TEXT DEFAULT 'learning', -- 'learning', 'review', 'assessment'
@@ -233,6 +256,11 @@ CHECK (session_status IN ('active', 'completed', 'abandoned'));
 
 ALTER TABLE quiz_sessions ADD CONSTRAINT fk_quiz_sessions_user
 FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE;
+
+CREATE INDEX idx_quiz_sessions_quiz_user ON quiz_sessions(quiz_id, user_id);
+
+ALTER TABLE quiz_sessions ADD CONSTRAINT fk_quiz_sessions_quiz
+FOREIGN KEY (quiz_id) REFERENCES quizzes(id) ON DELETE CASCADE;
 
 CREATE TABLE user_responses (
 id UUID PRIMARY KEY,

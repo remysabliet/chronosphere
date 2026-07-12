@@ -3,10 +3,13 @@
  * @returns { Promise<void> }
  */
 export const seed = async function (knex) {
-  // Deletes ALL existing entries
-  await knex('bkt_parameter_defaults').del();
-  await knex('bloom_level_weights').del();
-  await knex('bloom_levels').del();
+  // TRUNCATE ... CASCADE (not .del()) so re-running this seed against a
+  // database where learning_units already exists doesn't fail with a FK
+  // violation on learning_units_complexity_level_foreign — CASCADE clears
+  // those dependent rows too, and 003_learning_content re-inserts them.
+  await knex.raw(
+    'TRUNCATE TABLE bkt_parameter_defaults, bloom_level_weights, bloom_levels CASCADE'
+  );
 
   // Insert BKT parameter defaults
   await knex('bkt_parameter_defaults').insert([

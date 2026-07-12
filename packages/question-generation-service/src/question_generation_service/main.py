@@ -24,6 +24,7 @@ from question_generation_service.routers.concept_router import concept_router
 from question_generation_service.routers.moderation_router import moderation_router
 from question_generation_service.routers.questions_router import questions_router
 from question_generation_service.routers.quiz_router import quiz_router
+from question_generation_service.routers.session_router import session_router
 from question_generation_service.routers.thema_router import thema_router
 from question_generation_service.routers.wizard_router import wizard_router
 from question_generation_service.workers.generation_worker import GenerationWorker
@@ -75,10 +76,19 @@ app = FastAPI(
 )
 
 
+def _status_for(exc: DomainError) -> int:
+    # Walks the MRO instead of an exact-type lookup so a new subclass (e.g.
+    # AIRateLimitedError under AIUnavailableError) inherits its parent's
+    # status by default instead of silently falling through to 400.
+    for cls in type(exc).__mro__:
+        if cls in _STATUS_BY_EXCEPTION:
+            return _STATUS_BY_EXCEPTION[cls]
+    return 400
+
+
 @app.exception_handler(DomainError)
 async def domain_error_handler(request: Request, exc: DomainError):
-    status_code = _STATUS_BY_EXCEPTION.get(type(exc), 400)
-    return JSONResponse(status_code=status_code, content={"detail": str(exc)})
+    return JSONResponse(status_code=_status_for(exc), content={"detail": str(exc)})
 
 
 @app.get("/health")
@@ -89,6 +99,7 @@ async def health_check():
 app.include_router(concept_router)
 app.include_router(questions_router)
 app.include_router(quiz_router)
+app.include_router(session_router)
 app.include_router(thema_router)
 app.include_router(wizard_router)
 app.include_router(moderation_router)

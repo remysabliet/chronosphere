@@ -1,6 +1,9 @@
+from collections.abc import Sequence
+from datetime import UTC, datetime
 from typing import Protocol, TypedDict
 from uuid import UUID
 
+from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,6 +28,24 @@ class ConceptProgressRepositoryProtocol(Protocol):
     async def initialize_batch(
         self, user_id: UUID, rows: list[ConceptProgressInput]
     ) -> list[ConceptProgressEntryProtocol]: ...
+
+    async def get(
+        self, user_id: UUID, concept_id: UUID, bloom_level: str
+    ) -> ConceptProgressEntryProtocol | None: ...
+
+    async def get_batch(
+        self, user_id: UUID, pairs: Sequence[tuple[UUID, str]]
+    ) -> Sequence[ConceptProgressEntryProtocol]: ...
+
+    async def record_attempt(
+        self,
+        user_id: UUID,
+        concept_id: UUID,
+        bloom_level: str,
+        p_ln: float,
+        is_correct: bool,
+        mastery_status: str,
+    ) -> None: ...
 
 
 class ConceptProgressRepository:
@@ -66,3 +87,66 @@ class ConceptProgressRepository:
         result = await self.session.execute(stmt)
         await self.session.commit()
         return list(result.scalars().all())  # type: ignore[return-value]
+
+    async def get(
+        self, user_id: UUID, concept_id: UUID, bloom_level: str
+    ) -> ConceptProgressEntryProtocol | None:
+        result = await self.session.execute(
+            select(ConceptProgressTracker).where(
+                ConceptProgressTracker.user_id == user_id,
+                ConceptProgressTracker.concept_id == concept_id,
+                ConceptProgressTracker.bloom_level == bloom_level,
+            )
+        )
+        return result.scalar_one_or_none()  # type: ignore[return-value]
+
+    async def get_batch(
+        self, user_id: UUID, pairs: Sequence[tuple[UUID, str]]
+    ) -> Sequence[ConceptProgressEntryProtocol]:
+        if not pairs:
+            return []
+        concept_ids = {concept_id for concept_id, _ in pairs}
+        result = await self.session.execute(
+            select(ConceptProgressTracker).where(
+                ConceptProgressTracker.user_id == user_id,
+                ConceptProgressTracker.concept_id.in_(concept_ids),
+            )
+        )
+        return result.scalars().all()  # type: ignore[return-value]
+
+    async def record_attempt(
+        self,
+        user_id: UUID,
+        concept_id: UUID,
+        bloom_level: str,
+        p_ln: float,
+        is_correct: bool,
+        mastery_status: str,
+    ) -> None:
+        # concept_progress_tracker.first_attempt/last_attempt are plain
+        # TIMESTAMP WITHOUT TIME ZONE columns (Knex table.timestamp(),
+        # no useTz) — bind a naive UTC value, not an aware one, or asyncpg
+        # rejects it outright.
+        now = datetime.now(UTC).replace(tzinfo=None)
+        await self.session.execute(
+            update(ConceptProgressTracker)
+            .where(
+                ConceptProgressTracker.user_id == user_id,
+                ConceptProgressTracker.concept_id == concept_id,
+                ConceptProgressTracker.bloom_level == bloom_level,
+            )
+            .values(
+                p_ln=p_ln,
+                attempt_count=ConceptProgressTracker.attempt_count + 1,
+                correct_count=ConceptProgressTracker.correct_count + (1 if is_correct else 0),
+                slip_count=ConceptProgressTracker.slip_count + (0 if is_correct else 1),
+                first_attempt=func.coalesce(ConceptProgressTracker.first_attempt, now),
+                last_attempt=now,
+                mastery_status=mastery_status,
+            )
+        )
+        await self.session.commit()
+        # Core-style UPDATE bypasses ORM attribute tracking — without this,
+        # AdaptiveSelectionService's get_batch() later in the same request
+        # would still see this pair's pre-update p_ln via the identity map.
+        self.session.expire_all()

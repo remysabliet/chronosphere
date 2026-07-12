@@ -23,7 +23,8 @@ describe('constants', () => {
   it('ROUTES covers core paths', () => {
     expect(ROUTES.HOME).toBe('/');
     expect(ROUTES.LOGIN).toBe('/login');
-    expect(ROUTES.DASHBOARD).toBe('/app/dashboard');
+    expect(ROUTES.QUIZZES).toBe('/app/quizzes');
+    expect(ROUTES.QUIZ_DETAIL('abc')).toBe('/app/quizzes/abc');
     expect(ROUTES.QUIZ_NEW).toBe('/app/quiz/new');
   });
 

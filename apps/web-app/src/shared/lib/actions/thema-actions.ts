@@ -1,14 +1,9 @@
 'use server';
 
-import { auth } from '@/lib/auth';
 import type {
-  ConceptMapRequest,
-  ConceptMapResponse,
   ConfirmRequest,
   ExposureRequest,
   ExposureResult,
-  QuestionBatchResponse,
-  QuestionGenerationRequest,
   QuizLengthInterpretation,
   RefineRequest,
   ResolvedThema,
@@ -16,34 +11,7 @@ import type {
   ThemaRequest,
 } from '@/types/thema';
 
-const BASE_URL = process.env.NEXT_PUBLIC_QUESTION_GEN_URL;
-
-async function postJSON<T>(path: string, body: unknown): Promise<T> {
-  const session = await auth();
-  if (!session?.idToken || session.error) {
-    throw new Error('Not authenticated');
-  }
-
-  const res = await fetch(`${BASE_URL}${path}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${session.idToken}`,
-    },
-    body: JSON.stringify(body),
-  });
-
-  if (!res.ok) {
-    const payload = await res.json().catch(() => null);
-    const detail = payload?.detail;
-    const message = Array.isArray(detail)
-      ? detail.map((item: { msg?: string }) => item.msg).join(', ')
-      : detail;
-    throw new Error(message || `Request failed with status ${res.status}`);
-  }
-
-  return res.json() as Promise<T>;
-}
+import { postJSON } from './api-client';
 
 export async function extractThemaAction(
   body: ThemaRequest
@@ -78,16 +46,4 @@ export async function interpretQuizLengthAction(
   return postJSON('/v1/wizard/quiz-length/interpret', {
     raw_user_input: rawUserInput,
   });
-}
-
-export async function mapConceptsAction(
-  body: ConceptMapRequest
-): Promise<ConceptMapResponse> {
-  return postJSON('/v1/concepts/map', body);
-}
-
-export async function generateQuestionsAction(
-  body: QuestionGenerationRequest
-): Promise<QuestionBatchResponse> {
-  return postJSON('/v1/questions/generate', body);
 }

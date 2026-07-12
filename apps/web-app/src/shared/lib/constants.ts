@@ -22,11 +22,13 @@ export const ROUTES = {
   FORGOT_PASSWORD: '/forgot-password',
 
   // Authenticated routes
-  DASHBOARD: '/app/dashboard',
+  HOME_APP: '/app/home',
   PROFILE: '/app/profile',
+  QUIZZES: '/app/quizzes',
+  QUIZ_DETAIL: (id: string) => `/app/quizzes/${id}`,
   QUIZ_NEW: '/app/quiz/new',
-  QUIZ_NEW_WIZARD: '/app/quiz/new/wizard',
   QUIZ_NEW_MANUAL: '/app/quiz/new/manual',
+  SESSION: (id: string) => `/app/sessions/${id}`,
   MEMOCARDS: '/app/memocards',
   ANALYTICS: '/app/analytics',
 
@@ -35,6 +37,10 @@ export const ROUTES = {
   ADMIN_USERS: '/admin/users',
   ADMIN_QUESTIONS: '/admin/questions',
 } as const;
+
+// The post-login landing page. One place to flip when Home ships (see
+// docs/product/ui-update-plan.md §1).
+export const DEFAULT_AUTHENTICATED_ROUTE = ROUTES.QUIZZES;
 
 export const EXTERNAL_LINKS = {
   GITHUB: 'https://github.com/memosphere',

@@ -312,6 +312,16 @@ def test_answers_match_fails_closed_when_both_sides_unparsable():
     assert not answers_match(["no idea"], ["also no idea"], requires_computation=True)
 
 
+def test_answers_match_falls_back_to_text_when_computation_flag_is_a_judge_mistake():
+    # Documented in docs/architecture/mistral-api-strategy.md §3: the judge can
+    # mis-flag requires_computation=true for a qualitative answer that has no
+    # extractable number ("It halves", "True", "O(n log n)") — comparing as
+    # normalized text instead of failing outright avoids silently dropping an
+    # otherwise-correct question.
+    assert answers_match(["It halves"], ["It halves"], requires_computation=True)
+    assert answers_match(["O(n log n)"], ["o(n log n)."], requires_computation=True)
+
+
 def test_answers_match_handles_negative_numbers():
     assert answers_match(["-5 degrees"], ["-5 degrees"], requires_computation=True)
 

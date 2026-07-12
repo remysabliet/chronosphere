@@ -2,10 +2,12 @@ from collections.abc import Sequence
 from typing import Protocol, TypedDict
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import exists, func, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
+from question_generation_service.core.config import get_settings
 from question_generation_service.models.question import (
     Question,
     QuestionServingLog,
@@ -38,6 +40,7 @@ class QuestionInput(TypedDict):
     explanation: str
     estimated_time: str
     tags: list[str]
+    embedding: list[float]
 
 
 class ValidationLogInput(TypedDict):
@@ -65,31 +68,102 @@ class QuestionRepositoryProtocol(Protocol):
 
     async def mark_served(self, user_id: UUID, question_ids: Sequence[UUID]) -> None: ...
 
+    async def get_by_ids(self, ids: Sequence[UUID]) -> Sequence[QuestionEntryProtocol]: ...
+
+    async def get_pool_for_session(
+        self,
+        concept_ids: Sequence[UUID],
+        question_types: Sequence[str],
+        user_id: UUID,
+        limit: int,
+    ) -> Sequence[QuestionEntryProtocol]: ...
+
+    async def get_candidates(
+        self,
+        concept_id: UUID,
+        bloom_level: str,
+        difficulty_tier: str | None,
+        question_types: Sequence[str],
+        user_id: UUID,
+        limit: int,
+    ) -> Sequence[QuestionEntryProtocol]: ...
+
+
+def _not_served_condition(user_id: UUID):  # noqa: ANN202 — SQLAlchemy column expression
+    served = select(QuestionServingLog.question_id).where(QuestionServingLog.user_id == user_id)
+    return Question.id.notin_(served)
+
+
+def _not_too_similar_condition(user_id: UUID):  # noqa: ANN202 — SQLAlchemy column expression
+    """Excludes candidates whose embedding is near-identical to something
+    already served to this user. Unlike _not_served_condition (exact row id
+    match), this also catches duplicate content stored under a *different*
+    concept_id — see docs/architecture/question-diversity-and-dedup.md.
+    """
+    served = aliased(Question)
+    served_log = aliased(QuestionServingLog)
+    threshold = get_settings().QUESTION_SIMILARITY_DISTANCE_THRESHOLD
+    return ~exists(
+        select(1)
+        .select_from(served_log)
+        .join(served, served.id == served_log.question_id)
+        .where(
+            served_log.user_id == user_id,
+            served.embedding.is_not(None),
+            Question.embedding.is_not(None),
+            served.embedding.cosine_distance(Question.embedding) < threshold,
+        )
+    )
+
 
 class QuestionRepository:
     def __init__(self, session: AsyncSession):
         self.session = session
 
     async def save_batch(self, questions: list[QuestionInput]) -> list[QuestionEntryProtocol]:
-        rows = [
-            Question(
-                concept_id=q["concept_id"],
-                bloom_level=q["bloom_level"],
-                difficulty_tier=q["difficulty_tier"],
-                question_type=q["question_type"],
-                question_text=q["question_text"],
-                options=q["options"],
-                correct_answers=q["correct_answers"],
-                explanation=q["explanation"],
-                estimated_time=q["estimated_time"],
-                tags=q["tags"],
-                source="ai_generated",
+        """Skips (rather than errors on) a literal repeat generation for the
+        same concept/bloom/tier — idx_questions_concept_text_dedup. Returns
+        only the rows actually inserted; callers correlate the result back to
+        their input list by question_text (unique within one generation batch
+        by prompt design) to know which drafts were skipped as duplicates.
+        """
+        if not questions:
+            return []
+        stmt = (
+            pg_insert(Question)
+            .values(
+                [
+                    {
+                        "concept_id": q["concept_id"],
+                        "bloom_level": q["bloom_level"],
+                        "difficulty_tier": q["difficulty_tier"],
+                        "question_type": q["question_type"],
+                        "question_text": q["question_text"],
+                        "options": q["options"],
+                        "correct_answers": q["correct_answers"],
+                        "explanation": q["explanation"],
+                        "estimated_time": q["estimated_time"],
+                        "tags": q["tags"],
+                        "embedding": q["embedding"],
+                        "source": "ai_generated",
+                    }
+                    for q in questions
+                ]
             )
-            for q in questions
-        ]
-        self.session.add_all(rows)
+            .on_conflict_do_nothing(
+                index_elements=[
+                    "concept_id",
+                    "bloom_level",
+                    "difficulty_tier",
+                    "question_text_norm_hash",
+                ],
+                index_where=Question.owner_user_id.is_(None),
+            )
+            .returning(Question)
+        )
+        result = await self.session.execute(stmt)
         await self.session.commit()
-        return rows  # type: ignore[return-value]
+        return list(result.scalars().all())  # type: ignore[return-value]
 
     async def log_validations(self, entries: list[ValidationLogInput]) -> None:
         rows = [
@@ -148,3 +222,64 @@ class QuestionRepository:
         )
         await self.session.execute(stmt)
         await self.session.commit()
+
+    async def get_by_ids(self, ids: Sequence[UUID]) -> Sequence[QuestionEntryProtocol]:
+        if not ids:
+            return []
+        result = await self.session.execute(select(Question).where(Question.id.in_(ids)))
+        return result.scalars().all()  # type: ignore[return-value]
+
+    async def get_pool_for_session(
+        self,
+        concept_ids: Sequence[UUID],
+        question_types: Sequence[str],
+        user_id: UUID,
+        limit: int,
+    ) -> Sequence[QuestionEntryProtocol]:
+        # Public pool plus this learner's own private (document-sourced)
+        # questions — a session should never surface someone else's private
+        # questions. Random order gives a varied session without needing to
+        # balance across concept/Bloom cells explicitly.
+        if not concept_ids:
+            return []
+        result = await self.session.execute(
+            select(Question)
+            .where(
+                Question.concept_id.in_(concept_ids),
+                Question.question_type.in_(question_types),
+                or_(Question.owner_user_id.is_(None), Question.owner_user_id == user_id),
+                _not_served_condition(user_id),
+                _not_too_similar_condition(user_id),
+            )
+            .order_by(func.random())
+            .limit(limit)
+        )
+        return result.scalars().all()  # type: ignore[return-value]
+
+    async def get_candidates(
+        self,
+        concept_id: UUID,
+        bloom_level: str,
+        difficulty_tier: str | None,
+        question_types: Sequence[str],
+        user_id: UUID,
+        limit: int,
+    ) -> Sequence[QuestionEntryProtocol]:
+        """Step 11 candidate lookup for one concept-Bloom(-tier) target — the
+        adaptive engine's exact-match query, with `difficulty_tier=None`
+        as its own any-tier fallback for that same pair.
+        """
+        conditions = [
+            Question.concept_id == concept_id,
+            Question.bloom_level == bloom_level,
+            Question.question_type.in_(question_types),
+            or_(Question.owner_user_id.is_(None), Question.owner_user_id == user_id),
+            _not_served_condition(user_id),
+            _not_too_similar_condition(user_id),
+        ]
+        if difficulty_tier is not None:
+            conditions.append(Question.difficulty_tier == difficulty_tier)
+        result = await self.session.execute(
+            select(Question).where(*conditions).order_by(func.random()).limit(limit)
+        )
+        return result.scalars().all()  # type: ignore[return-value]

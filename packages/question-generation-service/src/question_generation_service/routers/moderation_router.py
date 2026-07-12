@@ -1,4 +1,3 @@
-from fastapi import APIRouter,  HTTPException, status
+from fastapi import APIRouter
 
-
-moderation_router = APIRouter(prefix="/v1/moderation", tags=["Moderation","Admin"])
+moderation_router = APIRouter(prefix="/v1/moderation", tags=["Moderation", "Admin"])

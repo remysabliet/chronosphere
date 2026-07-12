@@ -5,6 +5,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from question_generation_service.core.config import get_settings
 from question_generation_service.models.learning_unit import LearningUnit
 
 
@@ -28,6 +29,7 @@ class ConceptInput(TypedDict):
     estimated_time_minutes: int
     bloom_coverage_score: int
     complexity_level: str
+    embedding: list[float]
 
 
 class LearningUnitRepositoryProtocol(Protocol):
@@ -38,6 +40,12 @@ class LearningUnitRepositoryProtocol(Protocol):
     ) -> Sequence[LearningUnitEntryProtocol]: ...
 
     async def get_by_thema(self, thema: str) -> Sequence[LearningUnitEntryProtocol]: ...
+
+    async def get_by_id(self, concept_id: UUID) -> LearningUnitEntryProtocol | None: ...
+
+    async def find_similar_concept(
+        self, thema: str, embedding: list[float]
+    ) -> LearningUnitEntryProtocol | None: ...
 
 
 class LearningUnitRepository:
@@ -59,6 +67,7 @@ class LearningUnitRepository:
                 estimated_time_minutes=c["estimated_time_minutes"],
                 bloom_coverage_score=c["bloom_coverage_score"],
                 complexity_level=c["complexity_level"],
+                embedding=c["embedding"],
             )
             for c in concepts
         ]
@@ -69,3 +78,30 @@ class LearningUnitRepository:
     async def get_by_thema(self, thema: str) -> list[LearningUnitEntryProtocol]:
         result = await self.session.execute(select(LearningUnit).where(LearningUnit.thema == thema))
         return list(result.scalars().all())  # type: ignore[return-value]
+
+    async def get_by_id(self, concept_id: UUID) -> LearningUnitEntryProtocol | None:
+        result = await self.session.execute(
+            select(LearningUnit).where(LearningUnit.id == concept_id)
+        )
+        return result.scalar_one_or_none()  # type: ignore[return-value]
+
+    async def find_similar_concept(
+        self, thema: str, embedding: list[float]
+    ) -> LearningUnitEntryProtocol | None:
+        """Nearest existing concept for this thema by embedding, if within
+        the similarity threshold — the reuse check that replaces exact-string
+        matching on Prompt 1's non-deterministic topic phrasing (see
+        docs/architecture/question-diversity-and-dedup.md).
+        """
+        distance = LearningUnit.embedding.cosine_distance(embedding)
+        threshold = get_settings().CONCEPT_SIMILARITY_DISTANCE_THRESHOLD
+        result = await self.session.execute(
+            select(LearningUnit, distance.label("distance"))
+            .where(LearningUnit.thema == thema, LearningUnit.embedding.is_not(None))
+            .order_by(distance)
+            .limit(1)
+        )
+        row = result.first()
+        if row is None or row.distance >= threshold:
+            return None
+        return row[0]  # type: ignore[return-value]

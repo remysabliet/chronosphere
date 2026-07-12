@@ -26,8 +26,22 @@ class Quiz(Base):
     question_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     time_limit_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
     visibility: Mapped[str] = mapped_column(Text, nullable=False, default="private")
+    # Incremented by the worker as each jobs:generate-questions batch completes.
+    generation_questions_ready: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
+class QuizConcept(Base):
+    """One row per concept a quiz was generated for — written alongside the
+    outbox entries in QuizService.create(), so topics can be listed/searched
+    without depending on outbox payloads or a session having started.
+    """
+
+    __tablename__ = "quiz_concepts"
+
+    quiz_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    concept_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
 
 
 class Outbox(Base):
@@ -43,3 +57,16 @@ class Outbox(Base):
     payload: Mapped[dict[str, JsonValue]] = mapped_column(JSONB, nullable=False)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class GenerationJobCompletion(Base):
+    """Claim check for one jobs:generate-questions stream message — see the
+    creating migration. Existence of a row means increment_questions_ready
+    already ran for that message_id; the generation worker uses this to stay
+    idempotent under at-least-once redelivery.
+    """
+
+    __tablename__ = "generation_job_completions"
+
+    message_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    completed_at: Mapped[datetime] = mapped_column(server_default=func.now())

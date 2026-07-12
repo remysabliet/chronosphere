@@ -4,15 +4,15 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from question_generation_service.clients.mistral_client import (
-    _parse_content,
     chat_complete_samples,
+    parse_content,
 )
+from question_generation_service.clients.mistral_config import CompletionConfig
 from question_generation_service.core.exceptions import (
     AIEmptyResponseError,
     AIInvalidResponseError,
     AIUnavailableError,
 )
-from question_generation_service.clients.mistral_config import CompletionConfig
 
 
 def _make_response(content: str) -> MagicMock:
@@ -27,24 +27,24 @@ def _make_response(content: str) -> MagicMock:
 
 class TestParseContent:
     def test_valid_json_returns_dict(self):
-        result = _parse_content('{"thema": "Photosynthesis"}')
+        result = parse_content('{"thema": "Photosynthesis"}')
         assert result == {"thema": "Photosynthesis"}
 
     def test_empty_string_raises(self):
         with pytest.raises(AIEmptyResponseError):
-            _parse_content("")
+            parse_content("")
 
     def test_none_raises(self):
         with pytest.raises(AIEmptyResponseError):
-            _parse_content(None)
+            parse_content(None)
 
     def test_invalid_json_raises(self):
         with pytest.raises(AIInvalidResponseError):
-            _parse_content("not json {")
+            parse_content("not json {")
 
     def test_non_string_raises(self):
         with pytest.raises(AIEmptyResponseError):
-            _parse_content(123)
+            parse_content(123)
 
 
 class TestChatCompleteSamples:
@@ -91,12 +91,14 @@ class TestChatCompleteSamples:
     async def test_all_failed_raises(self):
         config = CompletionConfig(n=2)
 
-        with patch(
-            "question_generation_service.clients.mistral_client._complete",
-            new=AsyncMock(side_effect=AIUnavailableError("all down")),
+        with (
+            patch(
+                "question_generation_service.clients.mistral_client._complete",
+                new=AsyncMock(side_effect=AIUnavailableError("all down")),
+            ),
+            pytest.raises(AIEmptyResponseError),
         ):
-            with pytest.raises(AIEmptyResponseError):
-                await chat_complete_samples("sys", "user", config)
+            await chat_complete_samples("sys", "user", config)
 
     @pytest.mark.asyncio
     async def test_empty_choices_skipped(self):

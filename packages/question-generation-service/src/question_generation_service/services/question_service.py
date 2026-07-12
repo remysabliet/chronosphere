@@ -1,9 +1,17 @@
+import asyncio
 import random
+from collections.abc import Sequence
 from typing import Protocol, cast
 from uuid import UUID
 
 from memosphere_domain import BloomLevel, DifficultyTier, QuestionType
-from question_generation_service.clients.mistral_client import chat_complete
+from memosphere_messaging import JsonValue
+from question_generation_service.clients import mistral_client
+from question_generation_service.clients.completion_transport import (
+    CompletionRequest,
+    CompletionTransportProtocol,
+    get_transport,
+)
 from question_generation_service.prompts.question_generation import (
     build_prompt_3_config,
     build_prompt_3_system,
@@ -12,7 +20,6 @@ from question_generation_service.prompts.question_judge import PROMPT_4_CONFIG, 
 from question_generation_service.repositories.question_repository import (
     QuestionEntryProtocol,
     QuestionInput,
-    QuestionRepositoryProtocol,
     ValidationLogInput,
 )
 from question_generation_service.schemas.question import (
@@ -32,10 +39,51 @@ from question_generation_service.services.question_validation_service import (
 _NOTES_PREVIEW_LENGTH = 500
 
 
+def _as_object_list(value: JsonValue) -> list[dict[str, JsonValue]]:
+    """Narrows a JSON array of unknown element shape down to objects only —
+    the LLM's response is untyped JSON on the wire; a malformed element is
+    dropped rather than crashing the whole batch on a single bad entry.
+    """
+    return [item for item in value if isinstance(item, dict)] if isinstance(value, list) else []
+
+
 class QuestionGeneratorProtocol(Protocol):
     async def generate_batch(
         self, request: QuestionGenerationRequest, user_id: UUID
     ) -> QuestionBatchResponse: ...
+
+
+# Narrower than QuestionRepositoryProtocol (which also covers get_by_ids,
+# get_pool_for_session, get_candidates — the adaptive-selection engine's
+# lookups this service never does) — Interface Segregation: depend only on
+# what's actually called here. QuestionRepository already satisfies this
+# structurally; no adapter needed.
+class QuestionPoolRepositoryProtocol(Protocol):
+    async def save_batch(
+        self, questions: list[QuestionInput]
+    ) -> Sequence[QuestionEntryProtocol]: ...
+
+    async def log_validations(self, entries: list[ValidationLogInput]) -> None: ...
+
+    async def get_by_concept_bloom_difficulty(
+        self, concept_id: UUID, bloom_level: str, difficulty_tier: str
+    ) -> Sequence[QuestionEntryProtocol]: ...
+
+    async def get_served_question_ids(
+        self, user_id: UUID, question_ids: Sequence[UUID]
+    ) -> set[UUID]: ...
+
+    async def mark_served(self, user_id: UUID, question_ids: Sequence[UUID]) -> None: ...
+
+    async def get_candidates(
+        self,
+        concept_id: UUID,
+        bloom_level: str,
+        difficulty_tier: str | None,
+        question_types: Sequence[str],
+        user_id: UUID,
+        limit: int,
+    ) -> Sequence[QuestionEntryProtocol]: ...
 
 
 def _build_user_msg(request: QuestionGenerationRequest) -> str:
@@ -100,16 +148,31 @@ def _from_pool_entry(entry: QuestionEntryProtocol) -> StoredQuestion:
 
 
 class QuestionService:
-    def __init__(self, repository: QuestionRepositoryProtocol):
+    def __init__(
+        self,
+        repository: QuestionPoolRepositoryProtocol,
+        transport: CompletionTransportProtocol | None = None,
+    ):
         self.repository = repository
+        # Sync or batch per MISTRAL_BATCH_MODE; injectable for tests.
+        self.transport = transport or get_transport()
 
     async def _judge_batch(
         self, request: QuestionGenerationRequest, drafts: list[GeneratedQuestion]
     ) -> list[JudgeVerdict]:
-        raw = await chat_complete(
-            PROMPT_4_SYSTEM, _build_judge_user_msg(request, drafts), PROMPT_4_CONFIG
+        results = await self.transport.complete_many(
+            [
+                CompletionRequest(
+                    custom_id="judge",
+                    system_msg=PROMPT_4_SYSTEM,
+                    user_msg=_build_judge_user_msg(request, drafts),
+                    config=PROMPT_4_CONFIG,
+                )
+            ]
         )
-        verdicts_by_index = {v["index"]: JudgeVerdict(**v) for v in raw["verdicts"]}
+        raw = results["judge"]
+        verdicts = [JudgeVerdict.model_validate(v) for v in _as_object_list(raw["verdicts"])]
+        verdicts_by_index = {v.index: v for v in verdicts}
         return [verdicts_by_index.get(i, _missing_verdict(i)) for i in range(len(drafts))]
 
     async def _generate_new(
@@ -122,10 +185,18 @@ class QuestionService:
         any surplus here still gets stored and simply grows the shared pool
         for the next learner who hits this same cell.
         """
-        system_msg = build_prompt_3_system(request.allowed_question_types)
-        config = build_prompt_3_config(request.allowed_question_types)
-        raw = await chat_complete(system_msg, _build_user_msg(request), config)
-        drafts = [GeneratedQuestion(**q) for q in raw["questions"]]
+        results = await self.transport.complete_many(
+            [
+                CompletionRequest(
+                    custom_id="generate",
+                    system_msg=build_prompt_3_system(request.allowed_question_types),
+                    user_msg=_build_user_msg(request),
+                    config=build_prompt_3_config(request.allowed_question_types),
+                )
+            ]
+        )
+        raw = results["generate"]
+        drafts = [GeneratedQuestion.model_validate(q) for q in _as_object_list(raw["questions"])]
 
         log_entries: list[ValidationLogInput] = []
         candidates: list[tuple[GeneratedQuestion, ValidationResult]] = []
@@ -145,10 +216,22 @@ class QuestionService:
                 continue
             candidates.append((draft, result))
 
-        # Judge is only run on drafts that already passed structural checks —
-        # no point spending a large-model call auditing an obviously broken draft.
+        # Judge and embeddings are both only run on drafts that already passed
+        # structural checks, and neither depends on the other's output — run
+        # them concurrently so the (batched, one call for the whole cell)
+        # embedding request is hidden behind the judge call's latency instead
+        # of adding to the pipeline's wall-clock time (see
+        # docs/architecture/question-diversity-and-dedup.md).
+        embeddings_by_text: dict[str, list[float]] = {}
         if candidates:
-            verdicts = await self._judge_batch(request, [draft for draft, _ in candidates])
+            verdicts, vectors = await asyncio.gather(
+                self._judge_batch(request, [draft for draft, _ in candidates]),
+                mistral_client.embed([draft.question_text for draft, _ in candidates]),
+            )
+            embeddings_by_text = {
+                draft.question_text: vector
+                for (draft, _), vector in zip(candidates, vectors, strict=True)
+            }
             candidates = [
                 (draft, merge_judge_verdict(result, draft, verdict))
                 for (draft, result), verdict in zip(candidates, verdicts, strict=True)
@@ -181,13 +264,23 @@ class QuestionService:
                 explanation=draft.explanation,
                 estimated_time=str(draft.estimated_time_seconds),
                 tags=draft.tags,
+                embedding=embeddings_by_text[draft.question_text],
             )
             for draft, _ in to_store
         ]
         stored = await self.repository.save_batch(inputs) if inputs else []
 
+        # save_batch skips (rather than errors on) a literal repeat of an
+        # existing question for this concept/bloom/tier
+        # (idx_questions_concept_text_dedup) — correlate what actually got
+        # stored back to its draft by question_text rather than assuming a
+        # 1:1 positional match, since a duplicate's slot is simply absent.
+        stored_by_text = {entry.question_text: entry for entry in stored}
         stored_questions: list[StoredQuestion] = []
-        for entry, (draft, result) in zip(stored, to_store, strict=True):
+        for draft, result in to_store:
+            entry = stored_by_text.get(draft.question_text)
+            if entry is None:
+                continue
             log_entries.append(
                 ValidationLogInput(
                     question_id=entry.id,
@@ -224,21 +317,25 @@ class QuestionService:
         LLM call, and preferring pool questions this learner hasn't seen yet
         over ones they have.
 
-        Order of preference: unseen pool -> freshly generated (grows the pool
-        for everyone) -> already-seen pool as a last resort, so a returning
-        learner degrades gracefully instead of under-delivering when a cell
-        is genuinely exhausted.
+        Order of preference: unseen-and-not-too-similar pool -> freshly
+        generated (grows the pool for everyone) -> already-seen pool as a
+        last resort, so a returning learner degrades gracefully instead of
+        under-delivering when a cell is genuinely exhausted. Uses
+        get_candidates (not get_by_concept_bloom_difficulty) for the first
+        tier specifically so this shares the same not-served-and-not-too-
+        similar guarantee as the adaptive-selection path that calls this as
+        its own live-generation fallback — see
+        docs/architecture/question-diversity-and-dedup.md.
         """
-        pool = await self.repository.get_by_concept_bloom_difficulty(
-            request.concept_id, request.bloom_level, request.difficulty_tier
+        fresh_pool = await self.repository.get_candidates(
+            request.concept_id,
+            request.bloom_level,
+            request.difficulty_tier,
+            request.allowed_question_types,
+            user_id,
+            BATCH_SIZE,
         )
-        served_ids = await self.repository.get_served_question_ids(
-            user_id, [entry.id for entry in pool]
-        )
-        unseen_pool = [entry for entry in pool if entry.id not in served_ids]
-        random.shuffle(unseen_pool)
-
-        stored_questions = [_from_pool_entry(entry) for entry in unseen_pool[:BATCH_SIZE]]
+        stored_questions = [_from_pool_entry(entry) for entry in fresh_pool]
         log_entries: list[ValidationLogInput] = []
 
         if len(stored_questions) < BATCH_SIZE:
@@ -247,6 +344,12 @@ class QuestionService:
             log_entries.extend(generated_log_entries)
 
         if len(stored_questions) < BATCH_SIZE:
+            pool = await self.repository.get_by_concept_bloom_difficulty(
+                request.concept_id, request.bloom_level, request.difficulty_tier
+            )
+            served_ids = await self.repository.get_served_question_ids(
+                user_id, [entry.id for entry in pool]
+            )
             seen_pool = [entry for entry in pool if entry.id in served_ids]
             random.shuffle(seen_pool)
             shortfall = BATCH_SIZE - len(stored_questions)

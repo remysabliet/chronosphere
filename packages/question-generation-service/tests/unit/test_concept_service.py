@@ -54,6 +54,9 @@ class FakeLearningUnitRepository:
             for c in concepts
         ]
 
+    async def find_similar_concept(self, thema: str, embedding: list[float]) -> _FakeEntry | None:
+        return None
+
 
 def _concept_response(topic: str, concept: str) -> dict[str, object]:
     return {
@@ -77,7 +80,11 @@ def _patch_response(monkeypatch, response: dict[str, object]) -> list[str]:
         calls.append(user_msg)
         return response
 
+    async def fake_embed(texts: list[str]) -> list[list[float]]:
+        return [[0.0] * 1024 for _ in texts]
+
     monkeypatch.setattr("question_generation_service.services.concept_service.chat_complete", fake)
+    monkeypatch.setattr("question_generation_service.clients.mistral_client.embed", fake_embed)
     return calls
 
 

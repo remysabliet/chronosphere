@@ -24,17 +24,36 @@ from question_generation_service.repositories.quiz_repository import QuizReposit
 from question_generation_service.schemas.question import (
     QuestionBatchResponse,
     QuestionGenerationRequest,
+    StoredQuestion,
 )
 from question_generation_service.schemas.quiz import QuizCreateRequest
+from question_generation_service.services import quiz_service as quiz_service_module
 from question_generation_service.services.question_service import QuestionGeneratorProtocol
-from question_generation_service.services.quiz_service import (
-    JOBS_GENERATE_QUESTIONS,
-    QuizService,
-)
+from question_generation_service.services.quiz_service import QuizService
 from question_generation_service.workers.generation_worker import GenerationWorker
 from question_generation_service.workers.outbox_relay import OutboxRelay
 
 pytestmark = pytest.mark.asyncio
+
+
+QUESTIONS_PER_STUBBED_BATCH = 2
+
+
+def _fake_question(request: QuestionGenerationRequest) -> StoredQuestion:
+    return StoredQuestion(
+        id=uuid.uuid4(),
+        concept_id=request.concept_id,
+        bloom_level=request.bloom_level,
+        difficulty_tier=request.difficulty_tier,
+        question_type="MCQ",
+        question_text="Stub question",
+        options=["A", "B"],
+        correct_answers=["A"],
+        explanation="Because.",
+        estimated_time_seconds=30,
+        tags=[],
+        validation_status="Passed",
+    )
 
 
 class CapturingGenerator:
@@ -49,7 +68,7 @@ class CapturingGenerator:
             concept_id=request.concept_id,
             bloom_level=request.bloom_level,
             difficulty_tier=request.difficulty_tier,
-            questions=[],
+            questions=[_fake_question(request) for _ in range(QUESTIONS_PER_STUBBED_BATCH)],
         )
 
 
@@ -62,10 +81,11 @@ def _concept_input(name: str) -> ConceptInput:
         estimated_time_minutes=10,
         bloom_coverage_score=3,
         complexity_level="Medium",
+        embedding=[0.0] * 1024,
     )
 
 
-async def test_quiz_flow_end_to_end():
+async def test_quiz_flow_end_to_end(monkeypatch: pytest.MonkeyPatch):
     settings = get_settings()
     redis: Redis = Redis.from_url(  # pyright: ignore[reportUnknownMemberType]
         settings.REDIS_URL, decode_responses=True, socket_connect_timeout=1
@@ -83,6 +103,11 @@ async def test_quiz_flow_end_to_end():
 
     user_id = uuid.uuid4()
     thema = f"Quiz Flow Thema {uuid.uuid4().hex[:8]}"
+    # The compose Redis is shared with the dev stack: publish to a test-unique
+    # topic so the real dev worker can never consume (and pay Mistral for)
+    # jobs whose concepts only exist in the test database.
+    test_topic = f"itest:jobs:generate-questions:{uuid.uuid4().hex[:8]}"
+    monkeypatch.setattr(quiz_service_module, "JOBS_GENERATE_QUESTIONS", test_topic)
 
     async with session_factory() as session:
         await session.execute(
@@ -139,11 +164,11 @@ async def test_quiz_flow_end_to_end():
         broker,
         lambda session: cast(QuestionGeneratorProtocol, generator),
     )
-    await broker.ensure_group(JOBS_GENERATE_QUESTIONS, "itest-quiz-flow")
+    await broker.ensure_group(test_topic, "itest-quiz-flow")
     ours: list[tuple[QuestionGenerationRequest, uuid.UUID]] = []
-    for _ in range(20):  # the stream may hold unrelated messages from other runs
+    for _ in range(5):
         consumed = await broker.consume_once(
-            JOBS_GENERATE_QUESTIONS, "itest-quiz-flow", "itest-c1", worker.handle, block_ms=100
+            test_topic, "itest-quiz-flow", "itest-c1", worker.handle, block_ms=100
         )
         ours = [c for c in generator.calls if str(c[0].concept_id) in unit_ids]
         if len(ours) == 3 or consumed == 0:
@@ -157,6 +182,15 @@ async def test_quiz_flow_end_to_end():
     assert all(r.difficulty_tier == "medium" for r, _ in ours)
     assert all(r.allowed_question_types == ["MCQ"] for r, _ in ours)
 
+    # 4. Each processed job attributed its stubbed questions back to the quiz's
+    # progress counter, keyed by the quiz_id carried in the job payload.
+    async with session_factory() as session:
+        ready = await session.execute(
+            text("SELECT generation_questions_ready FROM quizzes WHERE id = :id"),
+            {"id": str(response.id)},
+        )
+        assert ready.scalar_one() == len(ours) * QUESTIONS_PER_STUBBED_BATCH
+
     # Cleanup: our DB rows and the test consumer group.
     async with session_factory() as session:
         await session.execute(
@@ -169,6 +203,6 @@ async def test_quiz_flow_end_to_end():
         await session.execute(text("DELETE FROM learning_units WHERE thema = :t"), {"t": thema})
         await session.execute(text("DELETE FROM users WHERE user_id = :id"), {"id": str(user_id)})
         await session.commit()
-    await redis.xgroup_destroy(JOBS_GENERATE_QUESTIONS, "itest-quiz-flow")  # pyright: ignore[reportUnknownMemberType]
+    await redis.delete(test_topic)  # drops the stream and its consumer groups
     await redis.aclose()
     await engine.dispose()

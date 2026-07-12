@@ -2,8 +2,8 @@ from typing import Protocol
 from uuid import UUID
 
 from question_generation_service.repositories.concept_progress_repository import (
+    ConceptProgressEntryProtocol,
     ConceptProgressInput,
-    ConceptProgressRepositoryProtocol,
 )
 
 ConceptBloomPair = tuple[UUID, str]
@@ -15,6 +15,16 @@ class BktInitServiceProtocol(Protocol):
     ) -> int: ...
 
 
+# Narrower than ConceptProgressRepositoryProtocol (which also covers reads/
+# per-attempt updates this service never does) — Interface Segregation:
+# depend only on what's actually called here. ConceptProgressRepository
+# already satisfies this structurally; no adapter needed.
+class ConceptProgressBatchInitProtocol(Protocol):
+    async def initialize_batch(
+        self, user_id: UUID, rows: list[ConceptProgressInput]
+    ) -> list[ConceptProgressEntryProtocol]: ...
+
+
 class BktInitService:
     """Step 7 (main-workflow.md): seeds P(Ln) = P(L0) per concept-Bloom pair.
 
@@ -22,7 +32,7 @@ class BktInitService:
     nothing to duplicate here; this only seeds the per-user mastery starting point.
     """
 
-    def __init__(self, repository: ConceptProgressRepositoryProtocol):
+    def __init__(self, repository: ConceptProgressBatchInitProtocol):
         self.repository = repository
 
     async def initialize(

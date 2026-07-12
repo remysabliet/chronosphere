@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Literal, Self
 from uuid import UUID
 
@@ -6,6 +7,8 @@ from pydantic import BaseModel, Field, model_validator
 from memosphere_domain import QuestionType
 
 QuizVisibility = Literal["private", "shared", "public"]
+QuizScope = Literal["mine", "shared"]
+QuizStatus = Literal["ready", "generating"]
 
 
 class QuizCreateRequest(BaseModel):
@@ -24,6 +27,10 @@ class QuizCreateRequest(BaseModel):
         return self
 
 
+class QuizUpdateRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+
+
 class QuizResponse(BaseModel):
     id: UUID
     thema: str
@@ -36,3 +43,44 @@ class QuizResponse(BaseModel):
     # the pool warms in the background while the learner reads the wizard's
     # completion bubble.
     generation_batches_enqueued: int
+
+
+class QuizListItem(BaseModel):
+    id: UUID
+    thema: str
+    title: str
+    question_types: list[QuestionType]
+    question_count: int | None
+    time_limit_minutes: int | None
+    visibility: QuizVisibility
+    questions_ready: int
+    questions_expected: int
+    status: QuizStatus
+    # Distinct topics of the concepts this quiz was generated for.
+    topics: list[str]
+    # Populated only for scope='shared' — the owner's display name.
+    owner_name: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class QuizListResponse(BaseModel):
+    items: list[QuizListItem]
+    has_more: bool
+
+
+class QuizDetailResponse(BaseModel):
+    id: UUID
+    thema: str
+    title: str
+    question_types: list[QuestionType]
+    question_count: int | None
+    time_limit_minutes: int | None
+    visibility: QuizVisibility
+    questions_ready: int
+    questions_expected: int
+    status: QuizStatus
+    topics: list[str]
+    owner_name: str | None
+    created_at: datetime
+    updated_at: datetime

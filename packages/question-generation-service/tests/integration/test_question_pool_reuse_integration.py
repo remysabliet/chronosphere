@@ -58,6 +58,7 @@ def _question_input(concept_id: uuid.UUID, question_text: str) -> QuestionInput:
         explanation="Because A is correct.",
         estimated_time="30",
         tags=[],
+        embedding=[0.0] * 1024,
     )
 
 

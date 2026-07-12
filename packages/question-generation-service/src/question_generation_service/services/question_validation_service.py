@@ -130,7 +130,14 @@ def answers_match(
         derived_number = _extract_number(derived_answers[0])
         stated_number = _extract_number(stated_answers[0])
         if derived_number is None or stated_number is None:
-            return False
+            # The judge can mis-flag requires_computation=true for a
+            # qualitative answer with no extractable number ("It halves",
+            # "True", "O(n log n)") — comparing as normalized text instead of
+            # failing outright avoids silently dropping an otherwise-correct
+            # question (docs/architecture/mistral-api-strategy.md §3).
+            return _normalize_text_answer(derived_answers[0]) == _normalize_text_answer(
+                stated_answers[0]
+            )
         if stated_number == 0:
             return abs(derived_number - stated_number) < 1e-9
         return (

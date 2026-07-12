@@ -169,110 +169,134 @@ async def test_exposure_and_bkt_init_fill_tables_correctly(monkeypatch, scenario
     async with session_factory() as session:
         user_id = uuid.uuid4()
         await _insert_user(session, user_id)
-
-        thema_repository = ThemaRepository(session)
-        learning_unit_repository = LearningUnitRepository(session)
-        exposure_repository = ExposureRepository(session)
-        concept_progress_repository = ConceptProgressRepository(session)
-        concept_service = ConceptService(learning_unit_repository)
-        bkt_init_service = BktInitService(concept_progress_repository)
-        thema_service = ThemaService(
-            thema_repository, concept_service, exposure_repository, bkt_init_service
-        )
-        exposure_service = ExposureService(
-            thema_repository, exposure_repository, learning_unit_repository, bkt_init_service
-        )
-
-        async def fake_thema_chat_complete(system_msg, user_msg, config):
-            return _thema_extraction_response(
-                scenario["thema"], scenario["domain"], scenario["topics"]
+        try:
+            thema_repository = ThemaRepository(session)
+            learning_unit_repository = LearningUnitRepository(session)
+            exposure_repository = ExposureRepository(session)
+            concept_progress_repository = ConceptProgressRepository(session)
+            concept_service = ConceptService(learning_unit_repository)
+            bkt_init_service = BktInitService(concept_progress_repository)
+            thema_service = ThemaService(
+                thema_repository, concept_service, exposure_repository, bkt_init_service
+            )
+            exposure_service = ExposureService(
+                thema_repository, exposure_repository, learning_unit_repository, bkt_init_service
             )
 
-        async def fake_concept_chat_complete(system_msg, user_msg, config):
-            return _concept_map_response(scenario["concepts"])
+            async def fake_thema_chat_complete(system_msg, user_msg, config):
+                return _thema_extraction_response(
+                    scenario["thema"], scenario["domain"], scenario["topics"]
+                )
 
-        monkeypatch.setattr(
-            "question_generation_service.services.thema_service.chat_complete",
-            fake_thema_chat_complete,
-        )
-        monkeypatch.setattr(
-            "question_generation_service.services.concept_service.chat_complete",
-            fake_concept_chat_complete,
-        )
+            async def fake_concept_chat_complete(system_msg, user_msg, config):
+                return _concept_map_response(scenario["concepts"])
 
-        if scenario["pre_existing_exposure"] is not None:
-            await exposure_repository.save(
-                user_id, scenario["thema"], scenario["pre_existing_exposure"], source="test_seed"
+            async def fake_embed(texts: list[str]) -> list[list[float]]:
+                return [[1.0 if j == i else 0.0 for j in range(1024)] for i in range(len(texts))]
+
+            monkeypatch.setattr(
+                "question_generation_service.services.thema_service.chat_complete",
+                fake_thema_chat_complete,
+            )
+            monkeypatch.setattr(
+                "question_generation_service.services.concept_service.chat_complete",
+                fake_concept_chat_complete,
+            )
+            monkeypatch.setattr(
+                "question_generation_service.clients.mistral_client.embed", fake_embed
             )
 
-        extraction_result = await thema_service.extract(
-            ThemaRequest(raw_user_input=scenario["raw_input"])
-        )
-        assert extraction_result.status == "resolved"
+            if scenario["pre_existing_exposure"] is not None:
+                await exposure_repository.save(
+                    user_id,
+                    scenario["thema"],
+                    scenario["pre_existing_exposure"],
+                    source="test_seed",
+                )
 
-        confirmed = await thema_service.confirm(
-            extraction_result.extraction_id, ConfirmRequest(), user_id
-        )
-        assert confirmed.thema == scenario["thema"]
-
-        expected_level = scenario["pre_existing_exposure"] or scenario["answer_exposure"]
-        assert confirmed.exposure_required == (scenario["pre_existing_exposure"] is None)
-
-        if scenario["answer_exposure"] is not None:
-            exposure_result = await exposure_service.submit(
-                extraction_result.extraction_id,
-                user_id,
-                ExposureRequest(exposure_level=scenario["answer_exposure"]),
+            extraction_result = await thema_service.extract(
+                ThemaRequest(raw_user_input=scenario["raw_input"])
             )
-            assert exposure_result.exposure_level == scenario["answer_exposure"]
+            assert extraction_result.status == "resolved"
 
-        # --- verify learning_units got the concepts from Step 6 ---
-        learning_units = (
+            confirmed = await thema_service.confirm(
+                extraction_result.extraction_id, ConfirmRequest(), user_id
+            )
+            assert confirmed.thema == scenario["thema"]
+
+            expected_level = scenario["pre_existing_exposure"] or scenario["answer_exposure"]
+            assert confirmed.exposure_required == (scenario["pre_existing_exposure"] is None)
+
+            if scenario["answer_exposure"] is not None:
+                exposure_result = await exposure_service.submit(
+                    extraction_result.extraction_id,
+                    user_id,
+                    ExposureRequest(exposure_level=scenario["answer_exposure"]),
+                )
+                assert exposure_result.exposure_level == scenario["answer_exposure"]
+
+            # --- verify learning_units got the concepts from Step 6 ---
+            learning_units = (
+                await session.execute(
+                    text(
+                        "SELECT id, concept_name, bloom_levels_supported FROM learning_units "
+                        "WHERE thema = :thema"
+                    ),
+                    {"thema": scenario["thema"]},
+                )
+            ).all()
+            assert len(learning_units) == len(scenario["concepts"])
+            expected_concept_names = {c["concept"] for c in scenario["concepts"]}
+            assert {row.concept_name for row in learning_units} == expected_concept_names
+
+            # --- verify user_thema_exposure (Step 5) ---
+            exposure_row = (
+                await session.execute(
+                    text(
+                        "SELECT exposure_level FROM user_thema_exposure "
+                        "WHERE user_id = :user_id AND thema = :thema"
+                    ),
+                    {"user_id": str(user_id), "thema": scenario["thema"]},
+                )
+            ).one()
+            assert exposure_row.exposure_level == expected_level
+
+            # --- verify concept_progress_tracker (Step 7 BKT init) ---
+            expected_p_l0 = EXPOSURE_TO_P_L0[expected_level]
+            expected_pair_count = sum(len(c["bloom_levels"]) for c in scenario["concepts"])
+            progress_rows = (
+                await session.execute(
+                    text(
+                        "SELECT concept_id, bloom_level, p_ln, attempt_count, mastery_status "
+                        "FROM concept_progress_tracker WHERE user_id = :user_id"
+                    ),
+                    {"user_id": str(user_id)},
+                )
+            ).all()
+            assert len(progress_rows) == expected_pair_count
+            for row in progress_rows:
+                # p_ln is stored as Postgres `real` (single precision) — compare with
+                # tolerance rather than exact equality.
+                assert row.p_ln == pytest.approx(expected_p_l0)
+                assert row.attempt_count == 0
+                assert row.mastery_status == "In Progress"
+
+            concept_ids = {row.id for row in learning_units}
+            assert {row.concept_id for row in progress_rows} == concept_ids
+        finally:
+            # thema_extraction_inputs/user_thema_exposure/concept_progress_tracker
+            # all cascade off users/learning_units. Scenarios use fixed thema
+            # names (parametrize ids double as documentation), so a prior run's
+            # leftover rows would otherwise corrupt this run's own count
+            # assertions above (accumulating duplicate learning_units per thema).
             await session.execute(
-                text(
-                    "SELECT id, concept_name, bloom_levels_supported FROM learning_units WHERE thema = :thema"
-                ),
+                text("DELETE FROM learning_units WHERE thema = :thema"),
                 {"thema": scenario["thema"]},
             )
-        ).all()
-        assert len(learning_units) == len(scenario["concepts"])
-        expected_concept_names = {c["concept"] for c in scenario["concepts"]}
-        assert {row.concept_name for row in learning_units} == expected_concept_names
-
-        # --- verify user_thema_exposure (Step 5) ---
-        exposure_row = (
             await session.execute(
-                text(
-                    "SELECT exposure_level FROM user_thema_exposure "
-                    "WHERE user_id = :user_id AND thema = :thema"
-                ),
-                {"user_id": str(user_id), "thema": scenario["thema"]},
+                text("DELETE FROM users WHERE user_id = :id"), {"id": str(user_id)}
             )
-        ).one()
-        assert exposure_row.exposure_level == expected_level
-
-        # --- verify concept_progress_tracker (Step 7 BKT init) ---
-        expected_p_l0 = EXPOSURE_TO_P_L0[expected_level]
-        expected_pair_count = sum(len(c["bloom_levels"]) for c in scenario["concepts"])
-        progress_rows = (
-            await session.execute(
-                text(
-                    "SELECT concept_id, bloom_level, p_ln, attempt_count, mastery_status "
-                    "FROM concept_progress_tracker WHERE user_id = :user_id"
-                ),
-                {"user_id": str(user_id)},
-            )
-        ).all()
-        assert len(progress_rows) == expected_pair_count
-        for row in progress_rows:
-            # p_ln is stored as Postgres `real` (single precision) — compare with
-            # tolerance rather than exact equality.
-            assert row.p_ln == pytest.approx(expected_p_l0)
-            assert row.attempt_count == 0
-            assert row.mastery_status == "In Progress"
-
-        concept_ids = {row.id for row in learning_units}
-        assert {row.concept_id for row in progress_rows} == concept_ids
+            await session.commit()
 
     await engine.dispose()
 

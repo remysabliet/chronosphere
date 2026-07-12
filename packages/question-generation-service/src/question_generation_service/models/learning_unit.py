@@ -1,12 +1,14 @@
 import uuid
 from datetime import datetime
 
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import Integer, String, Text
 from sqlalchemy.dialects.postgresql import ARRAY, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
 from question_generation_service.db.base import Base
+from question_generation_service.models.question import EMBEDDING_DIM
 
 
 class LearningUnit(Base):
@@ -25,3 +27,4 @@ class LearningUnit(Base):
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     author: Mapped[str | None] = mapped_column(String, nullable=True)
     version: Mapped[str | None] = mapped_column(String, nullable=True)
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(EMBEDDING_DIM), nullable=True)

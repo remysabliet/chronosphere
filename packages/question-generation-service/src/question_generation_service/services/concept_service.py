@@ -1,12 +1,13 @@
+from collections.abc import Sequence
 from typing import Protocol, TypedDict, cast
 
 from memosphere_domain import BloomLevel, ComplexityLevel
+from question_generation_service.clients import mistral_client
 from question_generation_service.clients.mistral_client import chat_complete
 from question_generation_service.prompts.concept_map import PROMPT_2_CONFIG, PROMPT_2_SYSTEM
 from question_generation_service.repositories.learning_unit_repository import (
     ConceptInput,
     LearningUnitEntryProtocol,
-    LearningUnitRepositoryProtocol,
 )
 from question_generation_service.schemas.concept import (
     ConceptItem,
@@ -19,6 +20,22 @@ from question_generation_service.schemas.thema import LearnerContext
 
 class ConceptMapperProtocol(Protocol):
     async def map(self, request: ConceptMapRequest) -> ConceptMapResponse: ...
+
+
+# Narrower than LearningUnitRepositoryProtocol (which also covers get_by_id,
+# used only by the mastery/adaptive-selection path) — Interface Segregation:
+# depend only on what's actually called here. LearningUnitRepository already
+# satisfies this structurally; no adapter needed.
+class LearningUnitLookupProtocol(Protocol):
+    async def get_by_thema(self, thema: str) -> Sequence[LearningUnitEntryProtocol]: ...
+
+    async def save_batch(
+        self, thema: str, concepts: list[ConceptInput]
+    ) -> Sequence[LearningUnitEntryProtocol]: ...
+
+    async def find_similar_concept(
+        self, thema: str, embedding: list[float]
+    ) -> LearningUnitEntryProtocol | None: ...
 
 
 class _ConceptRaw(TypedDict):
@@ -65,14 +82,16 @@ def _from_entry(entry: LearningUnitEntryProtocol) -> StoredConceptItem:
 
 
 class ConceptService:
-    def __init__(self, repository: LearningUnitRepositoryProtocol):
+    def __init__(self, repository: LearningUnitLookupProtocol):
         self.repository = repository
 
     async def map(self, request: ConceptMapRequest) -> ConceptMapResponse:
-        # Prompt 1 canonicalizes thema/topic text (main-workflow.md Step 5), so the
-        # same real-world subject always produces the same strings here — reuse
-        # concepts a prior confirm() (by any user) already mapped for this thema,
-        # and only pay for Prompt 2 on topics nobody has mapped yet.
+        # Exact-string match on topic is a cheap first pass, but Prompt 1's
+        # topic phrasing isn't guaranteed stable across calls for "the same"
+        # real-world subject — a miss here doesn't mean the concept is new,
+        # just that it needs the embedding-similarity check below before
+        # Prompt 2's output gets persisted (see
+        # docs/architecture/question-diversity-and-dedup.md).
         # Note: concurrent first-time requests for the same thema can still race
         # and each insert their own copy — acceptable duplication, not correctness
         # risk; a stronger fix would need a DB-level uniqueness constraint or lock.
@@ -82,6 +101,7 @@ class ConceptService:
         missing_topics = [t for t in request.topics if t not in covered_topics]
 
         new_concepts: list[StoredConceptItem] = []
+        reused_from_missing: list[StoredConceptItem] = []
         if missing_topics:
             raw = await chat_complete(
                 PROMPT_2_SYSTEM,
@@ -102,25 +122,38 @@ class ConceptService:
                 for c in response["concepts"]
             ]
 
-            inputs: list[ConceptInput] = [
-                ConceptInput(
-                    topic=item.topic,
-                    concept_name=item.concept,
-                    learning_goal=item.learning_goal,
-                    bloom_levels_supported=list(item.bloom_levels),
-                    estimated_time_minutes=item.estimated_time_minutes,
-                    bloom_coverage_score=len(item.bloom_levels),
-                    complexity_level=item.complexity_level,
-                )
-                for item in items
-            ]
+            vectors = await mistral_client.embed([item.concept for item in items])
+            to_insert: list[tuple[ConceptItem, list[float]]] = []
+            for item, vector in zip(items, vectors, strict=True):
+                similar = await self.repository.find_similar_concept(request.thema, vector)
+                if similar is not None:
+                    reused_from_missing.append(_from_entry(similar))
+                    continue
+                to_insert.append((item, vector))
 
-            stored = await self.repository.save_batch(request.thema, inputs)
-            new_concepts = [
-                StoredConceptItem(id=entry.id, **item.model_dump())
-                for entry, item in zip(stored, items, strict=True)
-            ]
+            if to_insert:
+                inputs: list[ConceptInput] = [
+                    ConceptInput(
+                        topic=item.topic,
+                        concept_name=item.concept,
+                        learning_goal=item.learning_goal,
+                        bloom_levels_supported=list(item.bloom_levels),
+                        estimated_time_minutes=item.estimated_time_minutes,
+                        bloom_coverage_score=len(item.bloom_levels),
+                        complexity_level=item.complexity_level,
+                        embedding=vector,
+                    )
+                    for item, vector in to_insert
+                ]
+                stored = await self.repository.save_batch(request.thema, inputs)
+                new_concepts = [
+                    StoredConceptItem(id=entry.id, **item.model_dump())
+                    for entry, (item, _vector) in zip(stored, to_insert, strict=True)
+                ]
 
         reused_concepts = [_from_entry(e) for e in existing if e.topic in requested_topics]
 
-        return ConceptMapResponse(thema=request.thema, concepts=reused_concepts + new_concepts)
+        return ConceptMapResponse(
+            thema=request.thema,
+            concepts=reused_concepts + reused_from_missing + new_concepts,
+        )

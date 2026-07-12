@@ -7,6 +7,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from memosphere_messaging import Broker, Message
+from question_generation_service.repositories.quiz_repository import QuizRepositoryProtocol
 from question_generation_service.schemas.question import (
     QuestionBatchResponse,
     QuestionGenerationRequest,
@@ -46,14 +47,40 @@ class FakeGenerator:
         )
 
 
-def make_worker(generator: FakeGenerator) -> GenerationWorker:
+class FakeQuizRepository:
+    """Mirrors the real repository's guarantee: claim_job_completion returns
+    True only the first time a given message_id is seen, backed by the
+    generation_job_completions table's unique constraint in production.
+    """
+
+    def __init__(self) -> None:
+        self.claimed_ids: set[str] = set()
+        self.increments: list[tuple[UUID, int]] = []
+
+    async def claim_job_completion(self, message_id: str) -> bool:
+        if message_id in self.claimed_ids:
+            return False
+        self.claimed_ids.add(message_id)
+        return True
+
+    async def increment_questions_ready(self, quiz_id: UUID, delta: int) -> None:
+        self.increments.append((quiz_id, delta))
+
+
+def make_worker(
+    generator: FakeGenerator, quiz_repository: FakeQuizRepository | None = None
+) -> GenerationWorker:
     def generator_factory(session: AsyncSession) -> QuestionGeneratorProtocol:
         return generator
+
+    def quiz_repository_factory(session: AsyncSession) -> QuizRepositoryProtocol:
+        return cast(QuizRepositoryProtocol, quiz_repository)
 
     return GenerationWorker(
         cast(Callable[[], AsyncSession], FakeSession),
         cast(Broker, object()),  # handle() never touches the broker
         generator_factory,
+        quiz_repository_factory if quiz_repository is not None else None,
     )
 
 
@@ -97,4 +124,31 @@ async def test_malformed_payload_is_dropped_not_raised():
     # Valid request shape but no owner.
     await make_worker(generator).handle(job_message({"owner_user_id": "not-a-uuid"}))
 
-    assert generator.calls == []
+
+async def test_first_delivery_claims_the_job_and_increments_progress():
+    generator = FakeGenerator()
+    quiz_repository = FakeQuizRepository()
+    quiz_id = str(uuid4())
+    message = job_message({"quiz_id": quiz_id})
+
+    await make_worker(generator, quiz_repository).handle(message)
+
+    assert quiz_repository.increments == [(UUID(quiz_id), 0)]
+
+
+async def test_redelivery_of_the_same_message_does_not_double_count_progress():
+    """The exact scenario reclaim_stale introduces: a crash (or rate-limit
+    exhaustion) between generating and acking leaves the message pending,
+    and it comes back through handle() again with the same message.id.
+    """
+    generator = FakeGenerator()
+    quiz_repository = FakeQuizRepository()
+    quiz_id = str(uuid4())
+    message = job_message({"quiz_id": quiz_id})
+    worker = make_worker(generator, quiz_repository)
+
+    await worker.handle(message)
+    await worker.handle(message)
+
+    assert len(generator.calls) == 2  # generation itself does re-run
+    assert quiz_repository.increments == [(UUID(quiz_id), 0)]  # but only counted once

@@ -99,6 +99,31 @@ class FakeQuestionRepository:
         self.mark_served_calls.append((user_id, list(question_ids)))
         self.served.setdefault(user_id, set()).update(question_ids)
 
+    async def get_candidates(
+        self,
+        concept_id: UUID,
+        bloom_level: str,
+        difficulty_tier: str | None,
+        question_types: Sequence[str],
+        user_id: UUID,
+        limit: int,
+    ) -> list[_FakeEntry]:
+        # Real repository also excludes embeddings too-similar to anything
+        # already served — not modeled here since that's exercised against a
+        # real pgvector-backed DB in the integration tests; exact-id exclusion
+        # is what these fake-repository unit tests care about.
+        seen = self.served.get(user_id, set())
+        matches = [
+            e
+            for e in self.pool
+            if e.concept_id == concept_id
+            and e.bloom_level == bloom_level
+            and (difficulty_tier is None or e.difficulty_tier == difficulty_tier)
+            and e.question_type in question_types
+            and e.id not in seen
+        ]
+        return matches[:limit]
+
 
 def _draft(
     question_type: str = "MCQ",
@@ -143,6 +168,7 @@ def _pool_entry(
         "explanation": "Because A is correct, per the pool fixture.",
         "estimated_time": "30",
         "tags": [],
+        "embedding": [0.0] * 1024,
     }
     return _FakeEntry(entry_id if entry_id is not None else uuid4(), question)
 
@@ -171,7 +197,15 @@ def _patch_chat_complete(
         assert system_msg == PROMPT_3_SYSTEM
         return generation_response
 
-    monkeypatch.setattr("question_generation_service.services.question_service.chat_complete", fake)
+    async def fake_embed(texts: list[str]) -> list[list[float]]:
+        # Distinct per input (keyed by list position) rather than a shared
+        # vector — several tests store/serve multiple questions from the same
+        # cell in one run, and an identical embedding across them would trip
+        # the same-content similarity exclusion this diff adds.
+        return [[1.0 if j == i else 0.0 for j in range(1024)] for i in range(len(texts))]
+
+    monkeypatch.setattr("question_generation_service.clients.mistral_client.chat_complete", fake)
+    monkeypatch.setattr("question_generation_service.clients.mistral_client.embed", fake_embed)
     return calls
 
 
@@ -682,7 +716,11 @@ async def test_generate_batch_restricts_prompt_3_schema_to_allowed_types(monkeyp
             ]
         }
 
-    monkeypatch.setattr("question_generation_service.services.question_service.chat_complete", fake)
+    async def fake_embed(texts: list[str]) -> list[list[float]]:
+        return [[1.0 if j == i else 0.0 for j in range(1024)] for i in range(len(texts))]
+
+    monkeypatch.setattr("question_generation_service.clients.mistral_client.chat_complete", fake)
+    monkeypatch.setattr("question_generation_service.clients.mistral_client.embed", fake_embed)
     repository = FakeQuestionRepository()
     service = QuestionService(repository)
     request = QuestionGenerationRequest(
@@ -716,7 +754,7 @@ async def test_generate_batch_serves_unseen_pool_without_calling_llm(monkeypatch
         )
 
     monkeypatch.setattr(
-        "question_generation_service.services.question_service.chat_complete", fail_if_called
+        "question_generation_service.clients.mistral_client.chat_complete", fail_if_called
     )
     repository = FakeQuestionRepository()
     request = _request()

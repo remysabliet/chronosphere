@@ -1,4 +1,6 @@
+from collections.abc import Sequence
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 import pytest
@@ -6,6 +8,7 @@ import pytest
 from question_generation_service.core.exceptions import NotFoundError
 from question_generation_service.repositories.quiz_repository import (
     OutboxInput,
+    QuizConceptInput,
     QuizEntryProtocol,
     QuizInput,
 )
@@ -41,25 +44,59 @@ class FakeQuiz:
     question_count: int | None
     time_limit_minutes: int | None
     visibility: str
+    generation_questions_ready: int = 0
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 
 @dataclass
 class FakeQuizRepository:
-    created: list[tuple[QuizInput, list[OutboxInput]]] = field(default_factory=list)
+    created: list[tuple[QuizInput, list[OutboxInput], list[QuizConceptInput]]] = field(
+        default_factory=list
+    )
+    quizzes: dict[UUID, FakeQuiz] = field(default_factory=dict)
 
     async def create_with_outbox(
-        self, quiz: QuizInput, outbox_entries: list[OutboxInput]
+        self,
+        quiz: QuizInput,
+        outbox_entries: list[OutboxInput],
+        concepts: list[QuizConceptInput],
     ) -> QuizEntryProtocol:
-        self.created.append((quiz, outbox_entries))
-        return FakeQuiz(id=uuid4(), **quiz)
+        self.created.append((quiz, outbox_entries, concepts))
+        row = FakeQuiz(**quiz)
+        self.quizzes[row.id] = row
+        return row
+
+    async def get(self, quiz_id: UUID) -> tuple[QuizEntryProtocol, str | None] | None:
+        row = self.quizzes.get(quiz_id)
+        return None if row is None else (row, None)
+
+    async def get_topics_for_quizzes(self, quiz_ids: Sequence[UUID]) -> dict[UUID, list[str]]:
+        return {}
+
+    async def list(
+        self,
+        *,
+        owner_user_id: UUID,
+        scope: str,
+        q: str | None,
+        status: str | None,
+        page: int,
+        page_size: int,
+    ) -> tuple[list[tuple[QuizEntryProtocol, str | None]], bool]:
+        return [(row, None) for row in self.quizzes.values()], False
+
+    async def rename(self, quiz_id: UUID, title: str) -> None:
+        self.quizzes[quiz_id].title = title
+
+    async def increment_questions_ready(self, quiz_id: UUID, delta: int) -> None:
+        row = self.quizzes[quiz_id]
+        row.generation_questions_ready += delta
 
 
 class FakeLearningUnitRepository:
     def __init__(self, units: list[FakeUnit]):
         self.units = units
-
-    async def save_batch(self, thema: str, concepts: list) -> list[FakeUnit]:  # pragma: no cover
-        raise NotImplementedError
 
     async def get_by_thema(self, thema: str) -> list[FakeUnit]:
         return [u for u in self.units if u.thema == thema]
@@ -102,7 +139,7 @@ async def test_enqueues_one_job_per_batch_of_five():
 
     # ceil(12 / 5) = 3 buckets out of the 8 available concept-Bloom pairs.
     assert response.generation_batches_enqueued == 3
-    _, outbox_entries = repository.created[0]
+    _, outbox_entries, _ = repository.created[0]
     assert len(outbox_entries) == 3
     assert all(e["topic"] == JOBS_GENERATE_QUESTIONS for e in outbox_entries)
 
@@ -137,7 +174,7 @@ async def test_job_payload_carries_the_full_generation_request():
     units = make_units("Photosynthesis", 1, ["Applying"])
     service, repository = make_service(units)
 
-    await service.create(
+    response = await service.create(
         owner,
         QuizCreateRequest(
             thema="Photosynthesis",
@@ -148,6 +185,7 @@ async def test_job_payload_carries_the_full_generation_request():
 
     payload = repository.created[0][1][0]["payload"]
     assert payload == {
+        "quiz_id": str(response.id),
         "owner_user_id": str(owner),
         "concept_id": str(units[0].id),
         "concept_name": "Concept 0",
@@ -194,7 +232,7 @@ async def test_quiz_row_defaults_title_to_thema_and_keeps_config():
         ),
     )
 
-    quiz_input, _ = repository.created[0]
+    quiz_input, _, _ = repository.created[0]
     assert quiz_input["title"] == "Photosynthesis"
     assert quiz_input["owner_user_id"] == owner
     assert quiz_input["visibility"] == "shared"
@@ -203,6 +241,62 @@ async def test_quiz_row_defaults_title_to_thema_and_keeps_config():
     assert response.visibility == "shared"
 
 
-def test_request_requires_some_size():
+async def test_request_requires_some_size():
     with pytest.raises(ValueError, match="question_count or time_limit_minutes"):
         QuizCreateRequest(thema="X", question_types=["MCQ"])
+
+
+async def test_get_reports_generating_until_ready_count_catches_up():
+    owner = uuid4()
+    service, repository = make_service(make_units("Photosynthesis", 1, ["Remembering"]))
+    created = await service.create(
+        owner,
+        QuizCreateRequest(thema="Photosynthesis", question_types=["MCQ"], question_count=5),
+    )
+
+    detail = await service.get(created.id, owner)
+    assert detail.status == "generating"
+    assert detail.questions_ready == 0
+    assert detail.questions_expected == 5
+
+    await repository.increment_questions_ready(created.id, 5)
+    detail = await service.get(created.id, owner)
+    assert detail.status == "ready"
+    assert detail.questions_ready == 5
+
+
+async def test_get_hides_private_quiz_from_non_owner():
+    owner = uuid4()
+    stranger = uuid4()
+    service, _ = make_service(make_units("Photosynthesis", 1, ["Remembering"]))
+    created = await service.create(
+        owner,
+        QuizCreateRequest(thema="Photosynthesis", question_types=["MCQ"], question_count=5),
+    )
+
+    with pytest.raises(NotFoundError):
+        await service.get(created.id, stranger)
+
+
+async def test_get_allows_non_owner_to_read_a_shared_quiz():
+    owner = uuid4()
+    stranger = uuid4()
+    service, _ = make_service(make_units("Photosynthesis", 1, ["Remembering"]))
+    created = await service.create(
+        owner,
+        QuizCreateRequest(
+            thema="Photosynthesis",
+            question_types=["MCQ"],
+            question_count=5,
+            visibility="shared",
+        ),
+    )
+
+    detail = await service.get(created.id, stranger)
+    assert detail.id == created.id
+
+
+async def test_get_unknown_id_raises_not_found():
+    service, _ = make_service([])
+    with pytest.raises(NotFoundError):
+        await service.get(uuid4(), uuid4())

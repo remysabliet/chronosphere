@@ -1,7 +1,5 @@
-from uuid import uuid4
 from unittest.mock import AsyncMock
-
-import pytest
+from uuid import uuid4
 
 from question_generation_service.core.exceptions import (
     AIEmptyResponseError,
@@ -30,6 +28,7 @@ def test_exception_messages():
 
 # These tests verify the exception handler in main.py maps errors to correct HTTP status.
 # They trigger the handler indirectly via the thema router.
+
 
 def test_not_found_maps_to_404(client, mock_thema_service):
     mock_thema_service.extract = AsyncMock(side_effect=NotFoundError("no such extraction"))

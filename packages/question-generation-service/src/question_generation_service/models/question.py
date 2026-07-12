@@ -1,12 +1,16 @@
 import uuid
 from datetime import datetime
 
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import String, Text
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
 from question_generation_service.db.base import Base
+
+# mistral-embed's output dimension — see docs/architecture/question-diversity-and-dedup.md
+EMBEDDING_DIM = 1024
 
 
 class Question(Base):
@@ -29,6 +33,7 @@ class Question(Base):
     created_by: Mapped[str | None] = mapped_column(String, nullable=True)
     # NULL = public shared pool; non-NULL = private to that user (document-sourced)
     owner_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(EMBEDDING_DIM), nullable=True)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
 

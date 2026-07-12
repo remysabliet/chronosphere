@@ -72,9 +72,7 @@ class ThemaRepository:
     async def get(self, extraction_id: UUID) -> ThemaEntryProtocol | None:
         return await self.session.get(ThemaExtractionInput, extraction_id)  # type: ignore[return-value]
 
-    async def mark_superseded(
-        self, entry: ThemaEntryProtocol, notes: str
-    ) -> ThemaEntryProtocol:
+    async def mark_superseded(self, entry: ThemaEntryProtocol, notes: str) -> ThemaEntryProtocol:
         entry.notes = notes
         await self.session.commit()
         return entry

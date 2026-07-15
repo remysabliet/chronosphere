@@ -14,6 +14,8 @@ logger = logging.getLogger(__name__)
 _JWKS_CACHE_TTL_SECONDS = 3600
 
 _bearer_scheme = HTTPBearer(auto_error=False)
+# Module-level singleton (not an inline `Depends(...)` default) per B008.
+_bearer_dependency = Depends(_bearer_scheme)
 
 
 class CognitoClaims(BaseModel):
@@ -102,7 +104,7 @@ class CognitoTokenVerifier:
 
     async def __call__(
         self,
-        credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
+        credentials: HTTPAuthorizationCredentials | None = _bearer_dependency,
     ) -> CognitoClaims:
         if credentials is None:
             raise HTTPException(

@@ -1,3 +1,4 @@
+from collections.abc import AsyncIterator
 from typing import Annotated
 
 from fastapi import Depends
@@ -16,7 +17,7 @@ engine = create_async_engine(
 async_session = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
 
 
-async def get_session():
+async def get_session() -> AsyncIterator[AsyncSession]:
     async with async_session() as session:
         yield session
 

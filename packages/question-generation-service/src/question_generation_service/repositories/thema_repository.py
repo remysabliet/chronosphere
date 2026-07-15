@@ -67,10 +67,10 @@ class ThemaRepository:
         )
         self.session.add(entry)
         await self.session.commit()
-        return entry  # type: ignore[return-value]
+        return entry  # pyright: ignore[reportReturnType]
 
     async def get(self, extraction_id: UUID) -> ThemaEntryProtocol | None:
-        return await self.session.get(ThemaExtractionInput, extraction_id)  # type: ignore[return-value]
+        return await self.session.get(ThemaExtractionInput, extraction_id)  # pyright: ignore[reportReturnType]
 
     async def mark_superseded(self, entry: ThemaEntryProtocol, notes: str) -> ThemaEntryProtocol:
         entry.notes = notes

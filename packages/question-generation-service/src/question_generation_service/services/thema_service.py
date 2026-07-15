@@ -108,6 +108,13 @@ def _join_topics(topics: list[str]) -> str:
     return ", ".join(topics)[:EXTRACTED_TOPIC_MAX_LENGTH]
 
 
+def _format_prior_guess(candidate: _Candidate) -> str:
+    return (
+        f"PRIOR GUESS (already shown to the learner): thema={candidate['thema']}; "
+        f"topics={'; '.join(candidate['topics'])}"
+    )
+
+
 def _as_raw_candidate(data: dict[str, Any]) -> _RawCandidate:
     return _RawCandidate(
         thema=data["thema"],
@@ -243,9 +250,14 @@ class ThemaService:
                 "This thread has too much context to refine further — start a new extraction"
             )
 
+        llm_user_msg = _build_user_message(ThemaRequest(raw_user_input=combined_input))
+        prior = next((c for c in data["candidates"] if c["rank"] == 1), None)
+        if prior is not None:
+            llm_user_msg = f"{llm_user_msg}\n\n{_format_prior_guess(prior)}"
+
         result = await self._extract_and_persist(
             raw_user_input=combined_input,
-            llm_user_msg=_build_user_message(ThemaRequest(raw_user_input=combined_input)),
+            llm_user_msg=llm_user_msg,
             parent_extraction_id=extraction_id,
         )
 

@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from typing import Protocol
 from uuid import UUID
 
@@ -11,7 +12,7 @@ ConceptBloomPair = tuple[UUID, str]
 
 class BktInitServiceProtocol(Protocol):
     async def initialize(
-        self, user_id: UUID, concept_bloom_pairs: list[ConceptBloomPair], p_l0: float
+        self, user_id: UUID, concept_bloom_pairs: Sequence[ConceptBloomPair], p_l0: float
     ) -> int: ...
 
 
@@ -36,7 +37,7 @@ class BktInitService:
         self.repository = repository
 
     async def initialize(
-        self, user_id: UUID, concept_bloom_pairs: list[ConceptBloomPair], p_l0: float
+        self, user_id: UUID, concept_bloom_pairs: Sequence[ConceptBloomPair], p_l0: float
     ) -> int:
         if not concept_bloom_pairs:
             return 0

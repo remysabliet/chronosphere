@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     CONCEPT_SIMILARITY_DISTANCE_THRESHOLD: float = 0.15
     COGNITO_ISSUER: str
     COGNITO_CLIENT_ID: str
+    # Local-dev only: skips Cognito token verification and serves a fixed dev
+    # user. Must never be enabled in a deployed environment.
+    DEV_AUTH_BYPASS: bool = False
     DEBUG: bool = False
     REDIS_URL: str = "redis://localhost:6379"
     # Off by default so tests/tooling never spin workers; compose sets it on.

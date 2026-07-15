@@ -1,6 +1,12 @@
 import NextAuth from 'next-auth';
 import Cognito from 'next-auth/providers/cognito';
+import Credentials from 'next-auth/providers/credentials';
+import type { Provider } from 'next-auth/providers';
 import type { JWT } from 'next-auth/jwt';
+
+// Local-dev only: mints a session without Cognito so the app can run with
+// the backend's matching DEV_AUTH_BYPASS. Never enable in a deployed env.
+const DEV_AUTH_BYPASS = process.env.DEV_AUTH_BYPASS === 'true';
 
 // Refresh the ID token this many seconds before it actually expires, to absorb request latency.
 const REFRESH_BUFFER_SECONDS = 60;
@@ -60,16 +66,33 @@ async function refreshIdToken(token: JWT): Promise<JWT> {
   }
 }
 
+const providers: Provider[] = [
+  Cognito({
+    clientId: process.env.COGNITO_CLIENT_ID,
+    clientSecret: process.env.COGNITO_CLIENT_SECRET,
+    issuer: process.env.COGNITO_ISSUER,
+    // App client only has "openid" + "email" allowed in its Hosted UI scopes.
+    authorization: { params: { scope: 'openid email' } },
+  }),
+];
+
+if (DEV_AUTH_BYPASS) {
+  providers.push(
+    Credentials({
+      id: 'dev-bypass',
+      name: 'Dev bypass',
+      credentials: {},
+      authorize: () => ({
+        id: '00000000-0000-4000-8000-000000000001',
+        email: 'dev-bypass@local.test',
+        name: 'Dev Bypass',
+      }),
+    })
+  );
+}
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
-  providers: [
-    Cognito({
-      clientId: process.env.COGNITO_CLIENT_ID,
-      clientSecret: process.env.COGNITO_CLIENT_SECRET,
-      issuer: process.env.COGNITO_ISSUER,
-      // App client only has "openid" + "email" allowed in its Hosted UI scopes.
-      authorization: { params: { scope: 'openid email' } },
-    }),
-  ],
+  providers,
   secret: process.env.NEXTAUTH_SECRET,
   trustHost: true,
   pages: {
@@ -77,6 +100,14 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   },
   callbacks: {
     async jwt({ token, account }) {
+      if (account?.provider === 'dev-bypass') {
+        token.idToken = 'dev-bypass';
+        // Far-future expiry: nothing to refresh in bypass mode.
+        token.idTokenExpires =
+          Math.floor(Date.now() / 1000) + 10 * 365 * 24 * 3600;
+        return token;
+      }
+
       if (account?.id_token) {
         token.idToken = account.id_token;
         token.refreshToken = account.refresh_token;

@@ -245,6 +245,8 @@ services:
     environment:
       <<: *db-env
       ENABLE_BACKGROUND_WORKERS: 'true'
+      # Local-dev only auth bypass; keep default 'false'.
+      DEV_AUTH_BYPASS: ${DEV_AUTH_BYPASS:-false}
     ports:
       - '8001:8001'
     depends_on:
@@ -301,6 +303,8 @@ services:
     environment:
       NEXT_PUBLIC_QUESTION_GEN_URL: http://question-generation-service:8001
       WATCHPACK_POLLING: 'true'
+      # Local-dev only auth bypass; keep default 'false'.
+      DEV_AUTH_BYPASS: ${DEV_AUTH_BYPASS:-false}
     ports:
       - '3000:3000'
     volumes:

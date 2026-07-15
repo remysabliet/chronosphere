@@ -86,7 +86,7 @@ class ConceptProgressRepository:
         )
         result = await self.session.execute(stmt)
         await self.session.commit()
-        return list(result.scalars().all())  # type: ignore[return-value]
+        return list(result.scalars().all())  # pyright: ignore[reportReturnType]
 
     async def get(
         self, user_id: UUID, concept_id: UUID, bloom_level: str
@@ -98,7 +98,7 @@ class ConceptProgressRepository:
                 ConceptProgressTracker.bloom_level == bloom_level,
             )
         )
-        return result.scalar_one_or_none()  # type: ignore[return-value]
+        return result.scalar_one_or_none()  # pyright: ignore[reportReturnType]
 
     async def get_batch(
         self, user_id: UUID, pairs: Sequence[tuple[UUID, str]]
@@ -112,7 +112,7 @@ class ConceptProgressRepository:
                 ConceptProgressTracker.concept_id.in_(concept_ids),
             )
         )
-        return result.scalars().all()  # type: ignore[return-value]
+        return result.scalars().all()  # pyright: ignore[reportReturnType]
 
     async def record_attempt(
         self,

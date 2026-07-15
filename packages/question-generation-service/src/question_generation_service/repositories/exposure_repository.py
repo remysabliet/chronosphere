@@ -27,7 +27,7 @@ class ExposureRepository:
         self.session = session
 
     async def get(self, user_id: UUID, thema: str) -> ExposureEntryProtocol | None:
-        return await self.session.get(UserThemaExposure, {"user_id": user_id, "thema": thema})  # type: ignore[return-value]
+        return await self.session.get(UserThemaExposure, {"user_id": user_id, "thema": thema})  # pyright: ignore[reportReturnType]
 
     async def save(
         self, user_id: UUID, thema: str, exposure_level: str, source: str
@@ -48,4 +48,4 @@ class ExposureRepository:
         )
         result = await self.session.execute(stmt)
         await self.session.commit()
-        return result.scalar_one()  # type: ignore[return-value]
+        return result.scalar_one()  # pyright: ignore[reportReturnType]

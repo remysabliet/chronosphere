@@ -2,7 +2,7 @@ from collections.abc import Sequence
 from typing import Protocol, TypedDict
 from uuid import UUID
 
-from sqlalchemy import exists, func, or_, select
+from sqlalchemy import ColumnElement, exists, func, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
@@ -89,12 +89,12 @@ class QuestionRepositoryProtocol(Protocol):
     ) -> Sequence[QuestionEntryProtocol]: ...
 
 
-def _not_served_condition(user_id: UUID):  # noqa: ANN202 — SQLAlchemy column expression
+def _not_served_condition(user_id: UUID) -> ColumnElement[bool]:
     served = select(QuestionServingLog.question_id).where(QuestionServingLog.user_id == user_id)
     return Question.id.notin_(served)
 
 
-def _not_too_similar_condition(user_id: UUID):  # noqa: ANN202 — SQLAlchemy column expression
+def _not_too_similar_condition(user_id: UUID) -> ColumnElement[bool]:
     """Excludes candidates whose embedding is near-identical to something
     already served to this user. Unlike _not_served_condition (exact row id
     match), this also catches duplicate content stored under a *different*
@@ -163,7 +163,7 @@ class QuestionRepository:
         )
         result = await self.session.execute(stmt)
         await self.session.commit()
-        return list(result.scalars().all())  # type: ignore[return-value]
+        return list(result.scalars().all())  # pyright: ignore[reportReturnType]
 
     async def log_validations(self, entries: list[ValidationLogInput]) -> None:
         rows = [
@@ -194,7 +194,7 @@ class QuestionRepository:
                 Question.owner_user_id.is_(None),
             )
         )
-        return result.scalars().all()  # type: ignore[return-value]
+        return result.scalars().all()  # pyright: ignore[reportReturnType]
 
     async def get_served_question_ids(
         self, user_id: UUID, question_ids: Sequence[UUID]
@@ -227,7 +227,7 @@ class QuestionRepository:
         if not ids:
             return []
         result = await self.session.execute(select(Question).where(Question.id.in_(ids)))
-        return result.scalars().all()  # type: ignore[return-value]
+        return result.scalars().all()  # pyright: ignore[reportReturnType]
 
     async def get_pool_for_session(
         self,
@@ -254,7 +254,7 @@ class QuestionRepository:
             .order_by(func.random())
             .limit(limit)
         )
-        return result.scalars().all()  # type: ignore[return-value]
+        return result.scalars().all()  # pyright: ignore[reportReturnType]
 
     async def get_candidates(
         self,
@@ -282,4 +282,4 @@ class QuestionRepository:
         result = await self.session.execute(
             select(Question).where(*conditions).order_by(func.random()).limit(limit)
         )
-        return result.scalars().all()  # type: ignore[return-value]
+        return result.scalars().all()  # pyright: ignore[reportReturnType]

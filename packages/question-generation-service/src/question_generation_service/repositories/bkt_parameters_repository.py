@@ -36,7 +36,7 @@ class BktParametersRepository:
                 BktParameterDefaults.complexity_level == complexity_level
             )
         )
-        return result.scalar_one_or_none()  # type: ignore[return-value]
+        return result.scalar_one_or_none()  # pyright: ignore[reportReturnType]
 
     async def get_bloom_weight(self, bloom_level: str) -> float | None:
         result = await self.session.execute(

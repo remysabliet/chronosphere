@@ -77,13 +77,13 @@ class LearningUnitRepository:
 
     async def get_by_thema(self, thema: str) -> list[LearningUnitEntryProtocol]:
         result = await self.session.execute(select(LearningUnit).where(LearningUnit.thema == thema))
-        return list(result.scalars().all())  # type: ignore[return-value]
+        return list(result.scalars().all())  # pyright: ignore[reportReturnType]
 
     async def get_by_id(self, concept_id: UUID) -> LearningUnitEntryProtocol | None:
         result = await self.session.execute(
             select(LearningUnit).where(LearningUnit.id == concept_id)
         )
-        return result.scalar_one_or_none()  # type: ignore[return-value]
+        return result.scalar_one_or_none()  # pyright: ignore[reportReturnType]
 
     async def find_similar_concept(
         self, thema: str, embedding: list[float]
@@ -104,4 +104,5 @@ class LearningUnitRepository:
         row = result.first()
         if row is None or row.distance >= threshold:
             return None
-        return row[0]  # type: ignore[return-value]
+        unit: LearningUnit = row[0]
+        return unit  # pyright: ignore[reportReturnType]

@@ -1,3 +1,5 @@
+from typing import TypedDict
+
 from mistralai.client.models import ResponseFormat
 from mistralai.client.models.jsonschema import JSONSchema
 
@@ -21,22 +23,43 @@ MAX_ALTERNATES = 2
 
 INPUT_KINDS = ["topic", "greeting_or_chitchat", "meta_question", "unintelligible"]
 
-_INTERPRETATION_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "thema": {"type": "string"},
-        "domain": {"type": "string", "enum": DOMAINS},
-        "disambiguator": {"type": "string"},
-        "confirmation": {"type": "string"},
-        "topics": {
-            "type": "array",
-            "items": {"type": "string"},
-            "minItems": 3,
-            "maxItems": 7,
-        },
-        "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+_JsonSchema = dict[str, object]
+
+
+class _ObjectSchema(TypedDict):
+    type: str
+    properties: dict[str, _JsonSchema]
+    required: list[str]
+    additionalProperties: bool
+
+
+_INTERPRETATION_PROPERTIES: dict[str, _JsonSchema] = {
+    "thema": {"type": "string"},
+    "domain": {"type": "string", "enum": DOMAINS},
+    "disambiguator": {"type": "string"},
+    "confirmation": {"type": "string"},
+    "topics": {
+        "type": "array",
+        "items": {"type": "string"},
+        "minItems": 3,
+        "maxItems": 7,
     },
-    "required": ["thema", "domain", "disambiguator", "confirmation", "topics", "confidence"],
+    "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+}
+
+_INTERPRETATION_REQUIRED: list[str] = [
+    "thema",
+    "domain",
+    "disambiguator",
+    "confirmation",
+    "topics",
+    "confidence",
+]
+
+_INTERPRETATION_SCHEMA: _ObjectSchema = {
+    "type": "object",
+    "properties": _INTERPRETATION_PROPERTIES,
+    "required": _INTERPRETATION_REQUIRED,
     "additionalProperties": False,
 }
 
@@ -74,6 +97,9 @@ RULES:
    A bare greeting word is chit-chat BY DEFAULT — treat greeting words as a topic
    only when the message makes the learning intent explicit ("teach me greetings",
    "how to say hello in Spanish").
+   If the input contains a "CLARIFICATION:" line, judge input_kind from the LATEST
+   CLARIFICATION line alone — a topic-like clarification after a greeting or
+   chit-chat opener ("hey" then "python basics") IS a topic.
    For any non-"topic" input_kind: set thema "None", domain "General",
    disambiguator "", confirmation "", topics [], confidence 0, alternates [],
    and write "reply" as a natural response to what they actually said:
@@ -100,13 +126,35 @@ RULES:
    beat 7 where some are filler.
 6. If INPUT contains a line starting with "CLARIFICATION:", it is the learner's
    correction to a prior guess and is AUTHORITATIVE over everything before it:
+   - If a "PRIOR GUESS" block is present, it is the interpretation the learner
+     was shown and is reacting to. Keep the prior thema title, scope, and
+     difficulty level, and never regenerate the topic list from scratch for a
+     mere edit. Apply the clarification as the smallest possible edit:
+     * Exclusion ("drop X", "I don't care about X"): return the prior topics
+       with ONLY the topics matching the named item(s) removed — every other
+       prior topic must reappear word-for-word, including ones the
+       clarification never mentioned. If nothing in the prior list matches
+       the excluded item, return the prior topics completely unchanged.
+     * Addition ("also cover Y"): the requested new topic Y MUST appear in the
+       output — this is non-negotiable. Keep every prior topic word-for-word
+       and append Y. If the prior list already has 7 topics, you MUST make room
+       by merging the two most closely related PRIOR topics into a single topic
+       (e.g. "Battles in Europe" + "Battles in the Pacific" -> "Major battles in
+       Europe and the Pacific") and keep the rest verbatim — never respond by
+       silently dropping Y or leaving the list unchanged.
+     * Narrowing ("only X", "just X"): the learner is re-scoping the thema to
+       X itself — zoom in: make X (or its direct subtopics) the new scope and
+       do not keep prior topics outside X.
+     Re-scope the whole thema only for narrowing or when the clarification
+     contradicts the prior reading itself.
    - Re-scope the thema and topics to match it; drop any topic that no longer
      fits the clarified intent even if it fit the earlier guess.
    - If the clarification names specific things the learner wants covered
      (e.g. "slavery, the Morocco war, and Black emancipation"), turn those named
-     things into the topics directly (phrased as proper topic titles) rather
-     than substituting a generic curriculum — the learner already told you
-     exactly what they want.
+     things into the topics directly — EXACTLY ONE topic per named thing, phrased
+     as a proper topic title, no more — rather than substituting a generic
+     curriculum or expanding each into subtopics. The learner already told you
+     exactly what they want and how granular they want it.
    - Commit to ONE decisive thema with confidence >= 0.9 and an empty "alternates" —
      the learner already disambiguated once, so treat the case as closed rather
      than reopening the same ambiguity you would flag for a bare keyword.
@@ -139,13 +187,13 @@ PROMPT_1_CONFIG = CompletionConfig(
             schema_definition={
                 "type": "object",
                 "properties": {
-                    **_INTERPRETATION_SCHEMA["properties"],
+                    **_INTERPRETATION_PROPERTIES,
                     "input_kind": {"type": "string", "enum": INPUT_KINDS},
                     "reply": {"type": "string"},
                     # Non-topic inputs return an empty topics list; alternates keep
                     # the 3-item floor since they are always real interpretations.
                     "topics": {
-                        **_INTERPRETATION_SCHEMA["properties"]["topics"],
+                        **_INTERPRETATION_PROPERTIES["topics"],
                         "minItems": 0,
                     },
                     "alternates": {
@@ -156,7 +204,7 @@ PROMPT_1_CONFIG = CompletionConfig(
                     },
                 },
                 "required": [
-                    *_INTERPRETATION_SCHEMA["required"],
+                    *_INTERPRETATION_REQUIRED,
                     "input_kind",
                     "reply",
                     "alternates",

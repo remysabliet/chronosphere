@@ -6,7 +6,9 @@ Memosphere is an AI-powered adaptive learning platform that generates personaliz
 
 ## 🎯 MVP Objectives
 
-**Legend:** ✅ done · 🟡 partial · ⬜ not started — full detail and per-step breakdown in [mvp-planning.md § Implementation Status](mvp-planning.md#-implementation-status-as-of-2026-07-09).
+**Legend:** ✅ done · 🟡 partial · ⬜ not started — full detail and per-step breakdown in [mvp-planning.md § Implementation Status](mvp-planning.md#-implementation-status-as-of-2026-07-12).
+
+**Overall progress: ~50%** (9 of 20 features in the [MVP Feature Array](#-mvp-feature-array) done, 2 partial, 9 not started; ~44% of the original roadmap's hour estimate). The core adaptive learning loop — thema extraction → quiz creation → question generation/dedup → adaptive session-taking with BKT — is essentially done and was code-reviewed and hardened on 2026-07-12. Everything outside that loop (analytics, spaced repetition, user feedback, RBAC, cloud deployment) hasn't started. See [mvp-planning.md § Overall Progress](mvp-planning.md#-overall-progress-50) for the breakdown.
 
 - ✅ Convert text into educational questions using AI
 - ✅ Deliver adaptive, personalized quiz experiences

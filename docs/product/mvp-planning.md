@@ -14,7 +14,7 @@
 
 ## 🎯 MVP Objectives
 
-**Legend:** ✅ done · 🟡 partial · ⬜ not started — see [Implementation Status](#-implementation-status-as-of-2026-07-09) below for detail.
+**Legend:** ✅ done · 🟡 partial · ⬜ not started — see [Implementation Status](#-implementation-status-as-of-2026-07-12) below for detail.
 
 - ✅ Convert text into educational questions using AI
 - ✅ Deliver adaptive, personalized quiz experiences
@@ -27,9 +27,20 @@
 
 ---
 
-## 📍 Implementation Status (as of 2026-07-09)
+## 📊 Overall Progress: ~50%
+
+Two ways to read this, both landing in the same range:
+
+- **Feature checklist** ([MVP Feature Array](#-mvp-feature-array) below): 9 of 20 features done, 2 partial, 9 not started → **50%** (✅=1, 🟡=0.5, ⬜=0).
+- **Roadmap hours** ([Total Time Estimate Summary](#-total-time-estimate-summary)): Phases 1-2 (foundation + core engine) are essentially complete; Phases 3-6 (analytics, spaced repetition, testing/security hardening, cloud deployment, launch prep) have barely started → roughly **~44%** of the original 480-720h estimate.
+
+The gap between the two numbers is exactly the point: the **core adaptive learning loop is nearly done** (steps 1-11 of `main-workflow.md`, ~85% of that narrower scope), but everything _around_ it — analytics/progress visualization, spaced repetition, user feedback, RBAC, and production infrastructure — is still unstarted. This is a deep, narrow MVP: one real vertical slice (thema → quiz → adaptive session), nothing else built out yet.
+
+## 📍 Implementation Status (as of 2026-07-12)
 
 **One service is real; the rest are scaffolds.** `question-generation-service` (Python/FastAPI) has absorbed nearly the entire backend — thema extraction, quiz creation, question generation, quiz-taking, and the adaptive/BKT engine all live there. `user-management-service`, `content-management-service`, `quiz-session-service`, `analytics-service`, and `notification-service` are unstarted: each is a single `index.ts` that answers `/health` via plain Node `http` — not NestJS or Express, despite the tech stack listed below. `learning-engine-service` is a matching FastAPI stub ("BKT and IRT — Coming Soon"). See [docs/diagram/architecture.md](../diagram/architecture.md) for the full topology, including which edges are real traffic vs. configured-but-unused.
+
+**2026-07-12:** the session-taking/mastery/adaptive-selection backend (steps 9-11) and the async quiz-creation/dedup pipeline (step 8) landed and were code-reviewed before merge. Fixes from that review: a session-state corruption bug in `submit_answer` (response could commit before the next question was appended), an expected-question-count formula mismatch between the quiz service and repository (inconsistent ready/generating status), a migration dedup edge case that could abort on real duplicate-cluster data, an HTTP status mapping gap for Mistral rate-limit errors, and a stale-state bug in the session-taking frontend page. No feature scope changed — this was hardening, not new functionality.
 
 ### Core adaptive loop (main-workflow.md steps)
 
@@ -121,7 +132,7 @@
 
 ## 📦 MVP Feature Array
 
-Status tags below: ✅ done · 🟡 partial · ⬜ not started (see [Implementation Status](#-implementation-status-as-of-2026-07-09)).
+Status tags below: ✅ done · 🟡 partial · ⬜ not started (see [Implementation Status](#-implementation-status-as-of-2026-07-12)).
 
 ```ts
 const MVP_FEATURES = [
@@ -163,7 +174,7 @@ const MVP_FEATURES = [
 
 ## 🗓️ Development Phases & Time Estimates
 
-> **Note:** this phase breakdown and its hour estimates are the original pre-build plan and haven't been re-scoped against actual progress. In practice, most of Phase 2.1-2.2's AI integration and learning-algorithm work (question generation, validation, BKT, adaptive selection) is already done, folded entirely into Question Generation Service rather than split across separate services as planned. See [Implementation Status](#-implementation-status-as-of-2026-07-09) above for what's actually built.
+> **Note:** this phase breakdown and its hour estimates are the original pre-build plan and haven't been re-scoped against actual progress. In practice, most of Phase 2.1-2.2's AI integration and learning-algorithm work (question generation, validation, BKT, adaptive selection) is already done, folded entirely into Question Generation Service rather than split across separate services as planned. See [Implementation Status](#-implementation-status-as-of-2026-07-12) above for what's actually built.
 
 ### **Phase 1: Project Foundation & Local Development Setup**
 

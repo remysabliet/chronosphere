@@ -16,6 +16,7 @@ from question_generation_service.repositories.quiz_repository import (
     QuizConceptInput,
     QuizEntryProtocol,
     QuizInput,
+    QuizProgressCounters,
     QuizScope,
     QuizStatus,
 )
@@ -25,12 +26,38 @@ from question_generation_service.schemas.quiz import (
     QuizDetailResponse,
     QuizListItem,
     QuizListResponse,
+    QuizProgressEvent,
     QuizResponse,
     QuizVisibility,
 )
 
 JOBS_GENERATE_QUESTIONS = "jobs:generate-questions"
 DEFAULT_PAGE_SIZE = 20
+
+
+def quiz_progress_channel(user_id: UUID) -> str:
+    """Per-user pub/sub channel: one SSE stream covers every quiz the user
+    owns, and subscribing is authorized by identity alone (own channel only).
+    """
+    return f"events:quiz-progress:{user_id}"
+
+
+def build_progress_event(quiz_id: UUID, counters: QuizProgressCounters) -> QuizProgressEvent:
+    """Derives the pushed payload with the same expected-count clamp and
+    job-based status rule the REST responses use — the worker publishes
+    through this so the two transports can never disagree.
+    """
+    expected = _expected_question_count(
+        counters["question_count"], counters["time_limit_minutes"]
+    )
+    return QuizProgressEvent(
+        quiz_id=quiz_id,
+        questions_ready=min(counters["questions_ready"], expected),
+        questions_expected=expected,
+        jobs_completed=counters["jobs_completed"],
+        jobs_total=counters["jobs_total"],
+        status=_status(counters["jobs_completed"], counters["jobs_total"]),
+    )
 
 
 # Narrower than each repository's full Protocol (which also covers writes/
@@ -44,6 +71,10 @@ class QuizLookupProtocol(Protocol):
         quiz: QuizInput,
         outbox_entries: list[OutboxInput],
         concepts: list[QuizConceptInput],
+    ) -> QuizEntryProtocol: ...
+
+    async def create_copy(
+        self, source: QuizEntryProtocol, new_id: UUID, owner_user_id: UUID
     ) -> QuizEntryProtocol: ...
 
     async def get(self, quiz_id: UUID) -> tuple[QuizEntryProtocol, str | None] | None: ...
@@ -65,9 +96,15 @@ class QuizLookupProtocol(Protocol):
 
     async def rename(self, quiz_id: UUID, title: str) -> None: ...
 
+    async def delete(self, quiz_id: UUID) -> None: ...
+
 
 class LearningUnitLookupProtocol(Protocol):
     async def get_by_thema(self, thema: str) -> Sequence[LearningUnitEntryProtocol]: ...
+
+
+class SessionLookupProtocol(Protocol):
+    async def user_has_session_for_quiz(self, user_id: UUID, quiz_id: UUID) -> bool: ...
 
 
 def _expected_question_count(question_count: int | None, time_limit_minutes: int | None) -> int:
@@ -75,10 +112,8 @@ def _expected_question_count(question_count: int | None, time_limit_minutes: int
         return question_count
     # require_a_size guarantees time_limit_minutes is set on this path.
     minutes = time_limit_minutes or 0
-    # ceil, not round, to match quiz_repository._expected_count_expr's SQL
-    # func.ceil — the two must agree exactly or a quiz's ready/generating
-    # status flips depending on whether it's read via this service or listed
-    # through the repository's SQL filter.
+    # Only the "~N questions" display estimate — completion no longer depends on
+    # this number (it tracks jobs), so it never gates ready/generating.
     return max(1, math.ceil(minutes * 60 / SECONDS_PER_QUESTION_ESTIMATE))
 
 
@@ -86,8 +121,11 @@ def _target_question_count(body: QuizCreateRequest) -> int:
     return _expected_question_count(body.question_count, body.time_limit_minutes)
 
 
-def _status(ready: int, expected: int) -> QuizStatus:
-    return "ready" if ready >= expected else "generating"
+def _status(jobs_completed: int, jobs_total: int) -> QuizStatus:
+    # Completion tracks the jobs, not the question count: a batch can yield fewer
+    # than BATCH_SIZE questions (validation/dedup), so a question-count target is
+    # not reliably reachable and would leave the quiz "generating" forever.
+    return "ready" if jobs_completed >= jobs_total else "generating"
 
 
 def _round_robin_pairs(
@@ -105,7 +143,7 @@ def _round_robin_pairs(
 
 
 def _to_list_item(
-    entry: QuizEntryProtocol, owner_name: str | None, topics: list[str]
+    entry: QuizEntryProtocol, owner_name: str | None, topics: list[str], is_owner: bool
 ) -> QuizListItem:
     expected = _expected_question_count(entry.question_count, entry.time_limit_minutes)
     ready = min(entry.generation_questions_ready, expected)
@@ -119,9 +157,12 @@ def _to_list_item(
         visibility=cast(QuizVisibility, entry.visibility),
         questions_ready=ready,
         questions_expected=expected,
-        status=_status(ready, expected),
+        jobs_completed=entry.generation_jobs_completed,
+        jobs_total=entry.generation_jobs_total,
+        status=_status(entry.generation_jobs_completed, entry.generation_jobs_total),
         topics=topics,
         owner_name=owner_name,
+        is_owner=is_owner,
         created_at=entry.created_at,
         updated_at=entry.updated_at,
     )
@@ -132,9 +173,11 @@ class QuizService:
         self,
         quiz_repository: QuizLookupProtocol,
         learning_unit_repository: LearningUnitLookupProtocol,
+        session_repository: SessionLookupProtocol,
     ):
         self.quiz_repository = quiz_repository
         self.learning_unit_repository = learning_unit_repository
+        self.session_repository = session_repository
 
     async def create(self, owner_user_id: UUID, body: QuizCreateRequest) -> QuizResponse:
         """Persists the quiz config and enqueues one generation job per
@@ -205,11 +248,17 @@ class QuizService:
             generation_batches_enqueued=len(outbox_entries),
         )
 
-    async def get(self, quiz_id: UUID, requesting_user_id: UUID) -> QuizDetailResponse:
+    async def _get_live(self, quiz_id: UUID) -> tuple[QuizEntryProtocol, str | None]:
+        # Tombstoned quizzes 404 like missing ones: to every quiz endpoint a
+        # soft-deleted quiz no longer exists — only session history (which
+        # reads via get_refs_for_ids) still sees it.
         found = await self.quiz_repository.get(quiz_id)
-        if found is None:
+        if found is None or found[0].deleted_at is not None:
             raise NotFoundError(f"No quiz found for id {quiz_id}")
-        entry, owner_name = found
+        return found
+
+    async def get(self, quiz_id: UUID, requesting_user_id: UUID) -> QuizDetailResponse:
+        entry, owner_name = await self._get_live(quiz_id)
         is_owner = entry.owner_user_id == requesting_user_id
         # Private quizzes are invisible to everyone but their owner — 404,
         # not 403, so a guess at another user's private quiz id can't even
@@ -230,9 +279,12 @@ class QuizService:
             visibility=cast(QuizVisibility, entry.visibility),
             questions_ready=ready,
             questions_expected=expected,
-            status=_status(ready, expected),
+            jobs_completed=entry.generation_jobs_completed,
+            jobs_total=entry.generation_jobs_total,
+            status=_status(entry.generation_jobs_completed, entry.generation_jobs_total),
             topics=topics_by_quiz.get(entry.id, []),
             owner_name=None if is_owner else owner_name,
+            is_owner=is_owner,
             created_at=entry.created_at,
             updated_at=entry.updated_at,
         )
@@ -240,16 +292,45 @@ class QuizService:
     async def rename(
         self, quiz_id: UUID, requesting_user_id: UUID, title: str
     ) -> QuizDetailResponse:
-        found = await self.quiz_repository.get(quiz_id)
-        if found is None:
-            raise NotFoundError(f"No quiz found for id {quiz_id}")
-        entry, _ = found
+        entry, _ = await self._get_live(quiz_id)
         # Same 404-not-403 reasoning as get(): a non-owner shouldn't be able
         # to distinguish "not yours" from "doesn't exist".
         if entry.owner_user_id != requesting_user_id:
             raise NotFoundError(f"No quiz found for id {quiz_id}")
         await self.quiz_repository.rename(quiz_id, title)
         return await self.get(quiz_id, requesting_user_id)
+
+    async def delete(self, quiz_id: UUID, requesting_user_id: UUID) -> None:
+        entry, _ = await self._get_live(quiz_id)
+        # Same 404-not-403 reasoning as rename()/get().
+        if entry.owner_user_id != requesting_user_id:
+            raise NotFoundError(f"No quiz found for id {quiz_id}")
+        await self.quiz_repository.delete(quiz_id)
+
+    async def copy(self, quiz_id: UUID, requesting_user_id: UUID) -> QuizDetailResponse:
+        """Fork-on-save ("Save to my quizzes"): clones the config under the
+        requester; the shared question pools make the copy immediately usable.
+        A soft-deleted source stays copyable by its owner and by users with a
+        session that ran against it (resurrect-from-history), but 404s for
+        everyone else so tombstones can't be enumerated.
+        """
+        found = await self.quiz_repository.get(quiz_id)
+        if found is None:
+            raise NotFoundError(f"No quiz found for id {quiz_id}")
+        entry, _ = found
+        is_owner = entry.owner_user_id == requesting_user_id
+        if not is_owner and entry.visibility == "private":
+            raise NotFoundError(f"No quiz found for id {quiz_id}")
+        if (
+            entry.deleted_at is not None
+            and not is_owner
+            and not await self.session_repository.user_has_session_for_quiz(
+                requesting_user_id, quiz_id
+            )
+        ):
+            raise NotFoundError(f"No quiz found for id {quiz_id}")
+        created = await self.quiz_repository.create_copy(entry, uuid4(), requesting_user_id)
+        return await self.get(created.id, requesting_user_id)
 
     async def list(
         self,
@@ -272,7 +353,10 @@ class QuizService:
         )
         items = [
             _to_list_item(
-                entry, owner_name if scope == "shared" else None, topics_by_quiz.get(entry.id, [])
+                entry,
+                owner_name if scope == "shared" else None,
+                topics_by_quiz.get(entry.id, []),
+                entry.owner_user_id == requesting_user_id,
             )
             for entry, owner_name in rows
         ]

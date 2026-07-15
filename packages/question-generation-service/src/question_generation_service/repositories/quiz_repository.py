@@ -3,7 +3,8 @@ from datetime import UTC, datetime
 from typing import Literal, Protocol, TypedDict
 from uuid import UUID
 
-from sqlalchemy import Integer, exists, func, or_, select, update
+from sqlalchemy import exists, func, insert, literal, or_, select, update
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -43,9 +44,30 @@ class QuizConceptInput(TypedDict):
     concept_id: UUID
 
 
+class QuizRef(TypedDict):
+    """Just enough of a quiz to label a session that ran against it —
+    including tombstoned quizzes, which session history still names.
+    """
+
+    title: str
+    deleted: bool
+
+
 class OutboxInput(TypedDict):
     topic: str
     payload: dict[str, JsonValue]
+
+
+class QuizProgressCounters(TypedDict):
+    """Post-update generation counters, plus the sizing config needed to
+    derive questions_expected — everything a progress event is built from.
+    """
+
+    question_count: int | None
+    time_limit_minutes: int | None
+    questions_ready: int
+    jobs_completed: int
+    jobs_total: int
 
 
 class QuizEntryProtocol(Protocol):
@@ -58,8 +80,11 @@ class QuizEntryProtocol(Protocol):
     time_limit_minutes: int | None
     visibility: str
     generation_questions_ready: int
+    generation_jobs_total: int
+    generation_jobs_completed: int
     created_at: datetime
     updated_at: datetime
+    deleted_at: datetime | None
 
 
 class QuizRepositoryProtocol(Protocol):
@@ -70,7 +95,13 @@ class QuizRepositoryProtocol(Protocol):
         concepts: list[QuizConceptInput],
     ) -> QuizEntryProtocol: ...
 
+    async def create_copy(
+        self, source: QuizEntryProtocol, new_id: UUID, owner_user_id: UUID
+    ) -> QuizEntryProtocol: ...
+
     async def get(self, quiz_id: UUID) -> tuple[QuizEntryProtocol, str | None] | None: ...
+
+    async def get_refs_for_ids(self, quiz_ids: Sequence[UUID]) -> dict[UUID, QuizRef]: ...
 
     # Declared before `list` below — a same-named method later in this class
     # body would shadow the builtin `list` generic used in this annotation.
@@ -89,22 +120,13 @@ class QuizRepositoryProtocol(Protocol):
 
     async def rename(self, quiz_id: UUID, title: str) -> None: ...
 
-    async def increment_questions_ready(self, quiz_id: UUID, delta: int) -> None: ...
+    async def delete(self, quiz_id: UUID) -> None: ...
+
+    async def record_job_completion(
+        self, quiz_id: UUID, questions_delta: int
+    ) -> QuizProgressCounters | None: ...
 
     async def claim_job_completion(self, message_id: str) -> bool: ...
-
-
-def _expected_count_expr():  # noqa: ANN202 — SQLAlchemy column expression, not a plain value
-    # Same shape as quiz_service._target_question_count, expressed in SQL so
-    # the "Ready"/"Generating" filter can be applied (and paginated) in the DB
-    # rather than fetched-then-filtered in Python.
-    return func.coalesce(
-        Quiz.question_count,
-        func.greatest(
-            1,
-            func.ceil(Quiz.time_limit_minutes * 60.0 / SECONDS_PER_QUESTION_ESTIMATE).cast(Integer),
-        ),
-    )
 
 
 class QuizRepository:
@@ -129,6 +151,7 @@ class QuizRepository:
             question_count=quiz["question_count"],
             time_limit_minutes=quiz["time_limit_minutes"],
             visibility=quiz["visibility"],
+            generation_jobs_total=len(outbox_entries),
         )
         self.session.add(row)
         self.session.add_all(
@@ -138,7 +161,39 @@ class QuizRepository:
             QuizConcept(quiz_id=c["quiz_id"], concept_id=c["concept_id"]) for c in concepts
         )
         await self.session.commit()
-        return row  # type: ignore[return-value]
+        return row  # pyright: ignore[reportReturnType]
+
+    async def create_copy(
+        self, source: QuizEntryProtocol, new_id: UUID, owner_user_id: UUID
+    ) -> QuizEntryProtocol:
+        # Fork-on-save: clone the config row (and its quiz_concepts) under a
+        # new owner. Questions live in the shared pools, so no generation is
+        # enqueued — jobs counters are pinned to the source's completed count
+        # so the copy is immediately "ready" with an accurate question tally.
+        row = Quiz(
+            id=new_id,
+            owner_user_id=owner_user_id,
+            thema=source.thema,
+            title=source.title,
+            question_types=list(source.question_types),
+            question_count=source.question_count,
+            time_limit_minutes=source.time_limit_minutes,
+            visibility="private",
+            generation_questions_ready=source.generation_questions_ready,
+            generation_jobs_total=source.generation_jobs_completed,
+            generation_jobs_completed=source.generation_jobs_completed,
+        )
+        self.session.add(row)
+        await self.session.execute(
+            insert(QuizConcept).from_select(
+                ["quiz_id", "concept_id"],
+                select(
+                    literal(new_id, type_=PG_UUID(as_uuid=True)), QuizConcept.concept_id
+                ).where(QuizConcept.quiz_id == source.id),
+            )
+        )
+        await self.session.commit()
+        return row  # pyright: ignore[reportReturnType]
 
     async def get(self, quiz_id: UUID) -> tuple[QuizEntryProtocol, str | None] | None:
         result = await self.session.execute(
@@ -148,6 +203,17 @@ class QuizRepository:
         )
         row = result.first()
         return None if row is None else (row[0], row[1])
+
+    async def get_refs_for_ids(self, quiz_ids: Sequence[UUID]) -> dict[UUID, QuizRef]:
+        if not quiz_ids:
+            return {}
+        result = await self.session.execute(
+            select(Quiz.id, Quiz.title, Quiz.deleted_at).where(Quiz.id.in_(quiz_ids))
+        )
+        return {
+            quiz_id: QuizRef(title=title, deleted=deleted_at is not None)
+            for quiz_id, title, deleted_at in result.all()
+        }
 
     async def get_topics_for_quizzes(self, quiz_ids: Sequence[UUID]) -> dict[UUID, list[str]]:
         if not quiz_ids:
@@ -176,7 +242,11 @@ class QuizRepository:
         page: int,
         page_size: int,
     ) -> tuple[list[tuple[QuizEntryProtocol, str | None]], bool]:
-        stmt = select(Quiz, User.name).outerjoin(User, User.user_id == Quiz.owner_user_id)
+        stmt = (
+            select(Quiz, User.name)
+            .outerjoin(User, User.user_id == Quiz.owner_user_id)
+            .where(Quiz.deleted_at.is_(None))
+        )
         if scope == "mine":
             stmt = stmt.where(Quiz.owner_user_id == owner_user_id)
         else:
@@ -193,10 +263,13 @@ class QuizRepository:
                 )
             )
             stmt = stmt.where(or_(Quiz.thema.ilike(like), Quiz.title.ilike(like), topic_match))
+        # Job-based completion, matching quiz_service._status — a quiz is ready
+        # once every enqueued generation job has finished, regardless of how many
+        # questions each yielded.
         if status == "ready":
-            stmt = stmt.where(Quiz.generation_questions_ready >= _expected_count_expr())
+            stmt = stmt.where(Quiz.generation_jobs_completed >= Quiz.generation_jobs_total)
         elif status == "generating":
-            stmt = stmt.where(Quiz.generation_questions_ready < _expected_count_expr())
+            stmt = stmt.where(Quiz.generation_jobs_completed < Quiz.generation_jobs_total)
 
         # Fetch one extra row to detect "more pages" without a separate COUNT query.
         stmt = (
@@ -215,13 +288,57 @@ class QuizRepository:
         )
         await self.session.commit()
 
-    async def increment_questions_ready(self, quiz_id: UUID, delta: int) -> None:
+    async def delete(self, quiz_id: UUID) -> None:
+        # Soft delete: the row (and its quiz_concepts) stays so session
+        # history keeps the quiz's title, topics, and per-question review —
+        # a learner's history outlives the quiz config. Listings filter on
+        # deleted_at; a future retention job may hard-purge tombstones.
         await self.session.execute(
             update(Quiz)
             .where(Quiz.id == quiz_id)
-            .values(generation_questions_ready=Quiz.generation_questions_ready + delta)
+            .values(deleted_at=func.now(), updated_at=func.now())
         )
         await self.session.commit()
+
+    async def record_job_completion(
+        self, quiz_id: UUID, questions_delta: int
+    ) -> QuizProgressCounters | None:
+        # One completed job: advance the job counter (the completion signal) and
+        # the informational question tally together, in a single row update.
+        # The counter is clamped to jobs_total: the backfill migration
+        # (20260713150000) assumed no jobs were in flight, so a straggler job
+        # completing after it would otherwise push completed past total.
+        # RETURNING hands the caller the post-update counters (for the progress
+        # event it publishes) without a second round-trip or a read-back race.
+        result = await self.session.execute(
+            update(Quiz)
+            .where(Quiz.id == quiz_id)
+            .values(
+                generation_questions_ready=Quiz.generation_questions_ready + questions_delta,
+                generation_jobs_completed=func.least(
+                    Quiz.generation_jobs_completed + 1, Quiz.generation_jobs_total
+                ),
+            )
+            .returning(
+                Quiz.question_count,
+                Quiz.time_limit_minutes,
+                Quiz.generation_questions_ready,
+                Quiz.generation_jobs_completed,
+                Quiz.generation_jobs_total,
+            )
+        )
+        row = result.first()
+        await self.session.commit()
+        if row is None:
+            return None
+        question_count, time_limit_minutes, questions_ready, jobs_completed, jobs_total = row
+        return QuizProgressCounters(
+            question_count=question_count,
+            time_limit_minutes=time_limit_minutes,
+            questions_ready=questions_ready,
+            jobs_completed=jobs_completed,
+            jobs_total=jobs_total,
+        )
 
     async def claim_job_completion(self, message_id: str) -> bool:
         """True the first time this message_id is claimed, False on every
@@ -264,7 +381,7 @@ class OutboxRepository:
             .limit(limit)
             .with_for_update(skip_locked=True)
         )
-        return result.scalars().all()  # type: ignore[return-value]
+        return result.scalars().all()  # pyright: ignore[reportReturnType]
 
     async def mark_published(self, ids: Sequence[int]) -> None:
         if not ids:

@@ -53,13 +53,21 @@ class QuizListItem(BaseModel):
     question_count: int | None
     time_limit_minutes: int | None
     visibility: QuizVisibility
+    # Informational only — a batch may yield fewer questions than planned.
     questions_ready: int
     questions_expected: int
+    # Completion signal + progress source: ready once completed >= total.
+    jobs_completed: int
+    jobs_total: int
     status: QuizStatus
     # Distinct topics of the concepts this quiz was generated for.
     topics: list[str]
     # Populated only for scope='shared' — the owner's display name.
     owner_name: str | None
+    # Explicit ownership flag — drives owner-only UI (delete/rename) vs
+    # "Save to my quizzes"; owner_name can't express this (users.name is
+    # nullable).
+    is_owner: bool
     created_at: datetime
     updated_at: datetime
 
@@ -67,6 +75,20 @@ class QuizListItem(BaseModel):
 class QuizListResponse(BaseModel):
     items: list[QuizListItem]
     has_more: bool
+
+
+class QuizProgressEvent(BaseModel):
+    """One generation-progress push, streamed over `GET /v1/quizzes/events`
+    (SSE). Field meanings match QuizListItem/QuizDetailResponse so the
+    frontend can patch its caches in place.
+    """
+
+    quiz_id: UUID
+    questions_ready: int
+    questions_expected: int
+    jobs_completed: int
+    jobs_total: int
+    status: QuizStatus
 
 
 class QuizDetailResponse(BaseModel):
@@ -79,8 +101,11 @@ class QuizDetailResponse(BaseModel):
     visibility: QuizVisibility
     questions_ready: int
     questions_expected: int
+    jobs_completed: int
+    jobs_total: int
     status: QuizStatus
     topics: list[str]
     owner_name: str | None
+    is_owner: bool
     created_at: datetime
     updated_at: datetime

@@ -8,9 +8,10 @@ from uuid import UUID, uuid4
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from memosphere_messaging import Broker, Message
+from memosphere_messaging import Broker, EventPublisher, Message
 from question_generation_service.repositories.question_repository import QuestionRepository
 from question_generation_service.repositories.quiz_repository import (
+    QuizProgressCounters,
     QuizRepository,
     QuizRepositoryProtocol,
 )
@@ -19,7 +20,11 @@ from question_generation_service.services.question_service import (
     QuestionGeneratorProtocol,
     QuestionService,
 )
-from question_generation_service.services.quiz_service import JOBS_GENERATE_QUESTIONS
+from question_generation_service.services.quiz_service import (
+    JOBS_GENERATE_QUESTIONS,
+    build_progress_event,
+    quiz_progress_channel,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -54,11 +59,13 @@ class GenerationWorker:
         broker: Broker,
         generator_factory: Callable[[AsyncSession], QuestionGeneratorProtocol] | None = None,
         quiz_repository_factory: Callable[[AsyncSession], QuizRepositoryProtocol] | None = None,
+        event_publisher: EventPublisher | None = None,
     ):
         self.session_factory = session_factory
         self.broker = broker
         self.generator_factory = generator_factory or default_generator_factory
         self.quiz_repository_factory = quiz_repository_factory or default_quiz_repository_factory
+        self.event_publisher = event_publisher
         self.consumer_name = f"qgs-{uuid4().hex[:8]}"
         self._last_reclaim = 0.0
 
@@ -87,12 +94,30 @@ class GenerationWorker:
             if quiz_id_raw:
                 quiz_repository = self.quiz_repository_factory(session)
                 # Redelivery (crash/timeout between generating and acking the
-                # stream entry, or a reclaimed stale message) must not
-                # increment the counter a second time for the same job.
+                # stream entry, or a reclaimed stale message) must not count the
+                # same job twice against the quiz's progress.
                 if await quiz_repository.claim_job_completion(message.id):
-                    await quiz_repository.increment_questions_ready(
+                    counters = await quiz_repository.record_job_completion(
                         UUID(str(quiz_id_raw)), len(batch.questions)
                     )
+                    if counters is not None:
+                        await self._publish_progress(UUID(str(quiz_id_raw)), owner, counters)
+
+    async def _publish_progress(
+        self, quiz_id: UUID, owner: UUID, counters: QuizProgressCounters
+    ) -> None:
+        # Best-effort: the DB row is already updated, so a raised publish
+        # failure would only trigger a redelivery that regenerates the whole
+        # batch — clients fall back to reading current state on (re)connect.
+        if self.event_publisher is None:
+            return
+        event = build_progress_event(quiz_id, counters)
+        try:
+            await self.event_publisher.publish_event(
+                quiz_progress_channel(owner), event.model_dump(mode="json")
+            )
+        except Exception:
+            logger.exception("failed to publish progress event for quiz %s", quiz_id)
 
     async def run(self, stop: asyncio.Event) -> None:
         while not stop.is_set():

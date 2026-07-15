@@ -1,7 +1,9 @@
-from typing import Annotated
+from typing import Annotated, cast
 
 from fastapi import Depends
 
+from memosphere_messaging import EventSubscriber, PubSubClient, RedisPubSub
+from question_generation_service.core.redis import get_redis_client
 from question_generation_service.db.session import SessionDep
 from question_generation_service.repositories.bkt_parameters_repository import (
     BktParametersRepository,
@@ -15,6 +17,7 @@ from question_generation_service.repositories.question_repository import Questio
 from question_generation_service.repositories.quiz_repository import QuizRepository
 from question_generation_service.repositories.session_repository import SessionRepository
 from question_generation_service.repositories.thema_repository import ThemaRepository
+from question_generation_service.repositories.user_repository import UserRepository
 from question_generation_service.services.adaptive_selection_service import (
     AdaptiveSelectionService,
 )
@@ -117,17 +120,18 @@ def get_quiz_repository(session: SessionDep) -> QuizRepository:
     return QuizRepository(session)
 
 
+def get_session_repository(session: SessionDep) -> SessionRepository:
+    return SessionRepository(session)
+
+
 def get_quiz_service(
     quiz_repository: Annotated[QuizRepository, Depends(get_quiz_repository)],
     learning_unit_repository: Annotated[
         LearningUnitRepository, Depends(get_learning_unit_repository)
     ],
+    session_repository: Annotated[SessionRepository, Depends(get_session_repository)],
 ) -> QuizService:
-    return QuizService(quiz_repository, learning_unit_repository)
-
-
-def get_session_repository(session: SessionDep) -> SessionRepository:
-    return SessionRepository(session)
+    return QuizService(quiz_repository, learning_unit_repository, session_repository)
 
 
 def get_adaptive_selection_service(
@@ -142,6 +146,14 @@ def get_adaptive_selection_service(
     )
 
 
+def get_user_repository(session: SessionDep) -> UserRepository:
+    return UserRepository(session)
+
+
+def get_event_subscriber() -> EventSubscriber:
+    return RedisPubSub(cast(PubSubClient, get_redis_client()))
+
+
 def get_session_service(
     session_repository: Annotated[SessionRepository, Depends(get_session_repository)],
     quiz_repository: Annotated[QuizRepository, Depends(get_quiz_repository)],
@@ -153,6 +165,7 @@ def get_session_service(
     adaptive_selection_service: Annotated[
         AdaptiveSelectionService, Depends(get_adaptive_selection_service)
     ],
+    user_repository: Annotated[UserRepository, Depends(get_user_repository)],
 ) -> SessionService:
     return SessionService(
         session_repository,
@@ -161,6 +174,7 @@ def get_session_service(
         question_repository,
         mastery_service,
         adaptive_selection_service,
+        user_repository,
     )
 
 
@@ -170,4 +184,5 @@ WizardServiceDep = Annotated[WizardService, Depends(get_wizard_service)]
 ExposureServiceDep = Annotated[ExposureService, Depends(get_exposure_service)]
 QuestionServiceDep = Annotated[QuestionService, Depends(get_question_service)]
 QuizServiceDep = Annotated[QuizService, Depends(get_quiz_service)]
+EventSubscriberDep = Annotated[EventSubscriber, Depends(get_event_subscriber)]
 SessionServiceDep = Annotated[SessionService, Depends(get_session_service)]

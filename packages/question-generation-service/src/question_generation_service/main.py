@@ -1,14 +1,14 @@
 import asyncio
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import cast
 
 import uvicorn
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
-from redis.asyncio import Redis
+from fastapi.responses import HTMLResponse, JSONResponse
 from scalar_fastapi import get_scalar_api_reference
 
-from memosphere_messaging import RedisStreamsBroker, StreamsClient
+from memosphere_messaging import PubSubClient, RedisPubSub, RedisStreamsBroker, StreamsClient
 from question_generation_service.clients import mistral_client
 from question_generation_service.core.config import get_settings
 from question_generation_service.core.exceptions import (
@@ -19,6 +19,7 @@ from question_generation_service.core.exceptions import (
     DomainError,
     NotFoundError,
 )
+from question_generation_service.core.redis import close_redis_client, get_redis_client
 from question_generation_service.db.session import async_session, engine
 from question_generation_service.routers.concept_router import concept_router
 from question_generation_service.routers.moderation_router import moderation_router
@@ -42,18 +43,17 @@ _WORKER_SHUTDOWN_TIMEOUT_SECONDS = 10
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
-    redis: Redis | None = None
     worker_tasks: list[asyncio.Task[None]] = []
     stop = asyncio.Event()
     if settings.ENABLE_BACKGROUND_WORKERS:
-        redis = Redis.from_url(  # pyright: ignore[reportUnknownMemberType]
-            settings.REDIS_URL, decode_responses=True
-        )
+        redis = get_redis_client()
         broker = RedisStreamsBroker(cast(StreamsClient, redis))
         relay = OutboxRelay(async_session, broker)
-        worker = GenerationWorker(async_session, broker)
+        worker = GenerationWorker(
+            async_session, broker, event_publisher=RedisPubSub(cast(PubSubClient, redis))
+        )
         worker_tasks = [
             asyncio.create_task(relay.run(stop), name="outbox-relay"),
             asyncio.create_task(worker.run(stop), name="generation-worker"),
@@ -62,8 +62,7 @@ async def lifespan(app: FastAPI):
     stop.set()
     if worker_tasks:
         await asyncio.wait(worker_tasks, timeout=_WORKER_SHUTDOWN_TIMEOUT_SECONDS)
-    if redis is not None:
-        await redis.aclose()
+    await close_redis_client()
     await mistral_client.aclose()
     await engine.dispose()
 
@@ -87,12 +86,12 @@ def _status_for(exc: DomainError) -> int:
 
 
 @app.exception_handler(DomainError)
-async def domain_error_handler(request: Request, exc: DomainError):
+async def domain_error_handler(request: Request, exc: DomainError) -> JSONResponse:
     return JSONResponse(status_code=_status_for(exc), content={"detail": str(exc)})
 
 
 @app.get("/health")
-async def health_check():
+async def health_check() -> dict[str, str]:
     return {"status": "ok", "service": "question-generation"}
 
 
@@ -106,7 +105,7 @@ app.include_router(moderation_router)
 
 
 @app.get("/")
-async def root():
+async def root() -> dict[str, str | dict[str, str]]:
     return {
         "message": "Question Generation Service - Coming Soon",
         "endpoints": {"health": "/health", "docs": "/docs"},
@@ -114,7 +113,7 @@ async def root():
 
 
 @app.get("/scalar", include_in_schema=False)
-def get_scalar_docs():
+def get_scalar_docs() -> HTMLResponse:
     return get_scalar_api_reference(openapi_url=app.openapi_url, title="Scalar API")
 
 

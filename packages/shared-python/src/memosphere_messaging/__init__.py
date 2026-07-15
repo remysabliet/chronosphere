@@ -13,7 +13,7 @@ of poisoning the group.
 
 import json
 import logging
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -37,6 +37,18 @@ class Message:
 
 
 MessageHandler = Callable[[Message], Awaitable[None]]
+
+
+def _decode_json_object(raw: str | None) -> dict[str, JsonValue] | None:
+    if raw is None:
+        return None
+    try:
+        decoded: JsonValue = json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(decoded, dict):
+        return None
+    return decoded
 
 
 # Shape redis-py's XAUTOCLAIM returns: (next_cursor, claimed_entries, deleted_ids).
@@ -78,6 +90,38 @@ class StreamsClient(Protocol):
     async def xpending_range(
         self, name: str, groupname: str, min: str, max: str, count: int
     ) -> list[PendingEntry]: ...
+
+
+class PubSubChannel(Protocol):
+    """The slice of redis.asyncio.client.PubSub this module uses."""
+
+    async def subscribe(self, *channels: str) -> None: ...
+
+    async def unsubscribe(self, *channels: str) -> None: ...
+
+    async def get_message(
+        self, ignore_subscribe_messages: bool = False, timeout: float | None = 0.0
+    ) -> Mapping[str, object] | None: ...
+
+    async def aclose(self) -> None: ...
+
+
+class PubSubClient(Protocol):
+    """The slice of redis.asyncio.Redis the pub/sub seam uses."""
+
+    async def publish(self, channel: str, message: str) -> int: ...
+
+    def pubsub(self) -> PubSubChannel: ...
+
+
+class EventPublisher(Protocol):
+    async def publish_event(self, channel: str, payload: Payload) -> None: ...
+
+
+class EventSubscriber(Protocol):
+    def subscribe(
+        self, channel: str, idle_timeout_s: float = 15.0
+    ) -> AsyncIterator[dict[str, JsonValue] | None]: ...
 
 
 class Broker(Protocol):
@@ -189,7 +233,7 @@ class RedisStreamsBroker:
         handler: MessageHandler,
         delivery: int = 1,
     ) -> bool:
-        payload = self._decode(fields.get(PAYLOAD_FIELD))
+        payload = _decode_json_object(fields.get(PAYLOAD_FIELD))
         if payload is None:
             await self._dead_letter(topic, group, message_id, fields)
             return False
@@ -203,18 +247,6 @@ class RedisStreamsBroker:
             return False
         await self.client.xack(topic, group, message_id)
         return True
-
-    @staticmethod
-    def _decode(raw: str | None) -> dict[str, JsonValue] | None:
-        if raw is None:
-            return None
-        try:
-            decoded: JsonValue = json.loads(raw)
-        except json.JSONDecodeError:
-            return None
-        if not isinstance(decoded, dict):
-            return None
-        return decoded
 
     async def _delivery_count(self, topic: str, group: str, message_id: str) -> int:
         entries = await self.client.xpending_range(topic, group, message_id, message_id, count=1)
@@ -231,13 +263,56 @@ class RedisStreamsBroker:
         await self.client.xack(topic, group, message_id)
 
 
+class RedisPubSub:
+    """Ephemeral fan-out over Redis pub/sub — live UI events (`events:*`
+    channels), not durable work. Undelivered messages are simply lost, which
+    is the right semantic for progress pushes: a reconnecting client
+    re-reads current state instead of replaying history.
+    """
+
+    def __init__(self, client: PubSubClient):
+        self.client = client
+
+    async def publish_event(self, channel: str, payload: Payload) -> None:
+        await self.client.publish(channel, json.dumps(dict(payload)))
+
+    async def subscribe(
+        self, channel: str, idle_timeout_s: float = 15.0
+    ) -> AsyncIterator[dict[str, JsonValue] | None]:
+        """Yields decoded payloads, and None after each idle_timeout_s of
+        silence so callers can emit keep-alives on a live connection.
+        """
+        pubsub = self.client.pubsub()
+        await pubsub.subscribe(channel)
+        try:
+            while True:
+                message = await pubsub.get_message(
+                    ignore_subscribe_messages=True, timeout=idle_timeout_s
+                )
+                if message is None:
+                    yield None
+                    continue
+                data = message.get("data")
+                decoded = _decode_json_object(data if isinstance(data, str) else None)
+                if decoded is not None:
+                    yield decoded
+        finally:
+            await pubsub.unsubscribe(channel)
+            await pubsub.aclose()
+
+
 __all__ = [
     "PAYLOAD_FIELD",
     "Broker",
+    "EventPublisher",
+    "EventSubscriber",
     "JsonValue",
     "Message",
     "MessageHandler",
     "Payload",
+    "PubSubChannel",
+    "PubSubClient",
+    "RedisPubSub",
     "RedisStreamsBroker",
     "StreamBatch",
     "StreamsClient",

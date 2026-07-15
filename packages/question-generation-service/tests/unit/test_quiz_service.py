@@ -45,6 +45,8 @@ class FakeQuiz:
     time_limit_minutes: int | None
     visibility: str
     generation_questions_ready: int = 0
+    generation_jobs_total: int = 0
+    generation_jobs_completed: int = 0
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
@@ -63,7 +65,7 @@ class FakeQuizRepository:
         concepts: list[QuizConceptInput],
     ) -> QuizEntryProtocol:
         self.created.append((quiz, outbox_entries, concepts))
-        row = FakeQuiz(**quiz)
+        row = FakeQuiz(**quiz, generation_jobs_total=len(outbox_entries))
         self.quizzes[row.id] = row
         return row
 
@@ -89,9 +91,10 @@ class FakeQuizRepository:
     async def rename(self, quiz_id: UUID, title: str) -> None:
         self.quizzes[quiz_id].title = title
 
-    async def increment_questions_ready(self, quiz_id: UUID, delta: int) -> None:
+    async def record_job_completion(self, quiz_id: UUID, questions_delta: int) -> None:
         row = self.quizzes[quiz_id]
-        row.generation_questions_ready += delta
+        row.generation_questions_ready += questions_delta
+        row.generation_jobs_completed += 1
 
 
 class FakeLearningUnitRepository:
@@ -246,7 +249,7 @@ async def test_request_requires_some_size():
         QuizCreateRequest(thema="X", question_types=["MCQ"])
 
 
-async def test_get_reports_generating_until_ready_count_catches_up():
+async def test_get_reports_generating_until_all_jobs_complete():
     owner = uuid4()
     service, repository = make_service(make_units("Photosynthesis", 1, ["Remembering"]))
     created = await service.create(
@@ -256,13 +259,41 @@ async def test_get_reports_generating_until_ready_count_catches_up():
 
     detail = await service.get(created.id, owner)
     assert detail.status == "generating"
+    assert detail.jobs_completed == 0
+    assert detail.jobs_total == 1
     assert detail.questions_ready == 0
     assert detail.questions_expected == 5
 
-    await repository.increment_questions_ready(created.id, 5)
+    # The single job finishes having produced only 3 questions (validation/dedup
+    # dropped 2) — the quiz is still ready because all its jobs are done.
+    await repository.record_job_completion(created.id, 3)
     detail = await service.get(created.id, owner)
     assert detail.status == "ready"
-    assert detail.questions_ready == 5
+    assert detail.jobs_completed == 1
+    assert detail.questions_ready == 3
+
+
+async def test_get_ready_even_when_questions_fall_short_of_expected():
+    # The exact regression: 5 jobs enqueued, each drops a question, so
+    # questions_ready (fewer than expected) never catches up — but every job
+    # finished, so the quiz must report ready, not spin forever.
+    owner = uuid4()
+    service, repository = make_service(make_units("Photosynthesis", 5, ["Remembering"]))
+    created = await service.create(
+        owner,
+        QuizCreateRequest(thema="Photosynthesis", question_types=["MCQ"], time_limit_minutes=20),
+    )
+
+    detail = await service.get(created.id, owner)
+    assert detail.jobs_total == 5
+    assert detail.questions_expected > detail.jobs_total  # target the old code chased
+
+    for _ in range(5):
+        await repository.record_job_completion(created.id, 4)
+
+    detail = await service.get(created.id, owner)
+    assert detail.status == "ready"
+    assert detail.questions_ready < detail.questions_expected
 
 
 async def test_get_hides_private_quiz_from_non_owner():

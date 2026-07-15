@@ -30,6 +30,7 @@ from question_generation_service.repositories.question_repository import (
 )
 from question_generation_service.repositories.quiz_repository import QuizRepository
 from question_generation_service.repositories.session_repository import SessionRepository
+from question_generation_service.repositories.user_repository import UserRepository
 from question_generation_service.schemas.quiz import QuizCreateRequest
 from question_generation_service.schemas.session import SubmitAnswerRequest
 from question_generation_service.services.adaptive_selection_service import (
@@ -164,10 +165,11 @@ async def test_session_flow_end_to_end():
                 service_question_repository,
                 mastery_service,
                 adaptive_selection_service,
+                UserRepository(service_session),
             )
 
             # 1. Starting pulls exactly the 2 stored questions into a frozen order.
-            state = await session_service.start(quiz.id, user_id)
+            state = await session_service.start(quiz.id, user_id, "immediate")
             assert state.total_questions == 2
             assert state.session_complete is False
             assert state.question is not None
@@ -258,7 +260,7 @@ async def test_session_flow_end_to_end():
             # 4. Starting on a quiz with zero stored questions must raise, not
             # silently return an empty session.
             with pytest.raises(InvalidInputError):
-                await session_service.start(empty_quiz.id, user_id)
+                await session_service.start(empty_quiz.id, user_id, None)
 
         # Verify the raw rows really landed correctly, including the
         # partitioned user_responses table.

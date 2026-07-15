@@ -63,8 +63,8 @@ class FakeQuizRepository:
         self.claimed_ids.add(message_id)
         return True
 
-    async def increment_questions_ready(self, quiz_id: UUID, delta: int) -> None:
-        self.increments.append((quiz_id, delta))
+    async def record_job_completion(self, quiz_id: UUID, questions_delta: int) -> None:
+        self.increments.append((quiz_id, questions_delta))
 
 
 def make_worker(

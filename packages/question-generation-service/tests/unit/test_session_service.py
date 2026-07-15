@@ -9,7 +9,7 @@ from question_generation_service.core.exceptions import InvalidInputError, NotFo
 from question_generation_service.repositories.learning_unit_repository import (
     LearningUnitEntryProtocol,
 )
-from question_generation_service.repositories.quiz_repository import QuizEntryProtocol
+from question_generation_service.repositories.quiz_repository import QuizEntryProtocol, QuizRef
 from question_generation_service.repositories.session_repository import (
     ResponseInput,
     SessionEntryProtocol,
@@ -33,8 +33,11 @@ class FakeQuiz:
     time_limit_minutes: int | None
     visibility: str
     generation_questions_ready: int = 0
+    generation_jobs_total: int = 0
+    generation_jobs_completed: int = 0
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    deleted_at: datetime | None = None
 
 
 @dataclass
@@ -44,6 +47,13 @@ class FakeQuizRepository:
     async def get(self, quiz_id: UUID) -> tuple[QuizEntryProtocol, str | None] | None:
         row = self.quizzes.get(quiz_id)
         return None if row is None else (row, None)
+
+    async def get_refs_for_ids(self, quiz_ids: Sequence[UUID]) -> dict[UUID, QuizRef]:
+        return {
+            quiz_id: QuizRef(title=self.quizzes[quiz_id].title, deleted=False)
+            for quiz_id in quiz_ids
+            if quiz_id in self.quizzes
+        }
 
 
 @dataclass
@@ -133,11 +143,34 @@ class FakeAdaptiveSelectionService:
 class FakeMasteryService:
     p_ln_next: float = 0.9
     decision_type: MasteryBand = "Practice"
+    # When set, record_attempt expires every session, mirroring the real
+    # ConceptProgressRepository.expire_all() the mastery path triggers.
+    expires: "FakeSessionRepository | None" = None
 
     async def record_attempt(
         self, user_id: UUID, concept_id: UUID, bloom_level: str, is_correct: bool
     ) -> tuple[float, MasteryBand]:
+        if self.expires is not None:
+            for session in self.expires.sessions.values():
+                session.expired = True
         return self.p_ln_next, self.decision_type
+
+
+@dataclass
+class FakeUserRepository:
+    modes: dict[UUID, str] = field(default_factory=dict)
+
+    async def get_default_feedback_mode(self, user_id: UUID) -> str | None:
+        return self.modes.get(user_id)
+
+    async def set_default_feedback_mode(self, user_id: UUID, mode: str) -> None:
+        self.modes[user_id] = mode
+
+
+class _ExpiredAttributeError(RuntimeError):
+    """Stand-in for SQLAlchemy's MissingGreenlet: reading an ORM attribute that
+    was expired by expire_all() lazy-loads it, which needs an await the caller
+    isn't in."""
 
 
 @dataclass
@@ -147,12 +180,30 @@ class FakeSession:
     quiz_id: UUID | None
     question_ids: list[UUID]
     thema: str | None
+    feedback_mode: str = "end"
     session_status: str = "active"
     total_questions: int = 0
     correct_answers: int = 0
     start_time: datetime = field(default_factory=lambda: datetime.now(UTC))
     end_time: datetime | None = None
     total_time_seconds: int | None = None
+    # Set by ConceptProgressRepository.expire_all() in production; a fresh
+    # repository.get() clears it. Only quiz_id is guarded here because that's the
+    # attribute the regression covers, but any expired attribute behaves this way.
+    expired: bool = False
+
+    def __getattribute__(self, name: str) -> object:
+        if name == "quiz_id" and object.__getattribute__(self, "expired"):
+            raise _ExpiredAttributeError("quiz_id read after expire_all()")
+        return object.__getattribute__(self, name)
+
+
+@dataclass
+class FakeResponseEntry:
+    question_id: UUID
+    selected_option: str | None
+    is_correct: bool | None
+    question_sequence_order: int | None
 
 
 @dataclass
@@ -167,12 +218,16 @@ class FakeSessionRepository:
             quiz_id=session_input["quiz_id"],
             question_ids=session_input["question_ids"],
             thema=session_input["thema"],
+            feedback_mode=session_input["feedback_mode"],
         )
         self.sessions[row.session_id] = row
         return row  # type: ignore[return-value]
 
     async def get(self, session_id: UUID) -> SessionEntryProtocol | None:
-        return self.sessions.get(session_id)  # type: ignore[return-value]
+        row = self.sessions.get(session_id)
+        if row is not None:
+            row.expired = False  # a fresh SELECT repopulates expired attributes
+        return row  # type: ignore[return-value]
 
     async def record_response(self, response: ResponseInput) -> None:
         self.responses.append(response)
@@ -190,6 +245,28 @@ class FakeSessionRepository:
         row.total_time_seconds = total_time_seconds
         row.end_time = datetime.now(UTC)
 
+    async def list_responses(self, session_id: UUID) -> Sequence[FakeResponseEntry]:
+        return [
+            FakeResponseEntry(
+                question_id=r["question_id"],
+                selected_option=r["selected_option"],
+                is_correct=r["is_correct"],
+                question_sequence_order=r["question_sequence_order"],
+            )
+            for r in self.responses
+            if r["session_id"] == session_id
+        ]
+
+    async def list_by_user(
+        self, user_id: UUID, quiz_id: UUID | None, limit: int
+    ) -> Sequence[SessionEntryProtocol]:
+        rows = [
+            s
+            for s in self.sessions.values()
+            if s.user_id == user_id and (quiz_id is None or s.quiz_id == quiz_id)
+        ]
+        return rows[:limit]  # type: ignore[return-value]
+
 
 def make_service(
     quiz: FakeQuiz, units: list[FakeUnit], questions: list[FakeQuestion]
@@ -202,6 +279,7 @@ def make_service(
         FakeQuestionRepository(questions),
         FakeMasteryService(),
         FakeAdaptiveSelectionService(questions),
+        FakeUserRepository(),
     )
     return service, session_repository
 
@@ -238,7 +316,7 @@ async def test_start_creates_session_with_pool_questions():
     questions = [make_question(concept.id) for _ in range(3)]
     service, _ = make_service(quiz, [concept], questions)
 
-    state = await service.start(quiz.id, owner)
+    state = await service.start(quiz.id, owner, None)
 
     assert state.total_questions == 2
     assert state.current_index == 0
@@ -265,7 +343,7 @@ async def test_start_rejects_non_owner_on_private_quiz():
     service, _ = make_service(quiz, [concept], [make_question(concept.id)])
 
     with pytest.raises(NotFoundError):
-        await service.start(quiz.id, stranger)
+        await service.start(quiz.id, stranger, None)
 
 
 async def test_start_raises_when_no_questions_available_yet():
@@ -284,7 +362,7 @@ async def test_start_raises_when_no_questions_available_yet():
     service, _ = make_service(quiz, [concept], [])
 
     with pytest.raises(InvalidInputError):
-        await service.start(quiz.id, owner)
+        await service.start(quiz.id, owner, None)
 
 
 async def test_submit_answer_grades_and_advances():
@@ -302,7 +380,7 @@ async def test_submit_answer_grades_and_advances():
     )
     questions = [make_question(concept.id, correct="A"), make_question(concept.id, correct="B")]
     service, _ = make_service(quiz, [concept], questions)
-    state = await service.start(quiz.id, owner)
+    state = await service.start(quiz.id, owner, "immediate")
     assert state.question is not None
     first_question_id = state.question.id
     first_question = next(q for q in questions if q.id == first_question_id)
@@ -337,7 +415,7 @@ async def test_submit_wrong_answer_and_completes_session_on_last_question():
     )
     question = make_question(concept.id, correct="A")
     service, repo = make_service(quiz, [concept], [question])
-    state = await service.start(quiz.id, owner)
+    state = await service.start(quiz.id, owner, "immediate")
     assert state.question is not None
 
     result = await service.submit_answer(
@@ -348,6 +426,53 @@ async def test_submit_wrong_answer_and_completes_session_on_last_question():
     assert result.state.session_complete is True
     assert result.state.question is None
     assert repo.sessions[state.session_id].session_status == "completed"
+
+
+async def test_submit_answer_survives_identity_map_expiry_after_record_attempt():
+    # Regression: mastery_service.record_attempt expire_all()s the shared session,
+    # so submit_answer must have already read session.quiz_id — reading it after
+    # (to load the quiz) lazy-loads an expired attribute and raises MissingGreenlet.
+    owner = uuid4()
+    concept = FakeUnit(id=uuid4(), thema="Photosynthesis")
+    quiz = FakeQuiz(
+        id=uuid4(),
+        owner_user_id=owner,
+        thema="Photosynthesis",
+        title="Photosynthesis",
+        question_types=["TrueFalse"],
+        question_count=2,
+        time_limit_minutes=None,
+        visibility="private",
+    )
+    questions = [make_question(concept.id, correct="A"), make_question(concept.id, correct="B")]
+    for q in questions:
+        q.question_type = "TrueFalse"
+    session_repository = FakeSessionRepository()
+    service = SessionService(
+        session_repository,
+        FakeQuizRepository({quiz.id: quiz}),
+        FakeLearningUnitRepository([concept]),
+        FakeQuestionRepository(questions),
+        FakeMasteryService(expires=session_repository),
+        FakeAdaptiveSelectionService(questions),
+        FakeUserRepository(),
+    )
+    state = await service.start(quiz.id, owner, "immediate")
+    assert state.question is not None
+    first_question = next(q for q in questions if q.id == state.question.id)
+    assert first_question.correct_answers is not None
+
+    # Must not raise _ExpiredAttributeError.
+    result = await service.submit_answer(
+        state.session_id,
+        owner,
+        SubmitAnswerRequest(
+            question_id=first_question.id, selected=[first_question.correct_answers[0]]
+        ),
+    )
+
+    assert result.is_correct is True
+    assert result.state.current_index == 1
 
 
 async def test_submit_answer_rejects_wrong_question_id():
@@ -365,7 +490,7 @@ async def test_submit_answer_rejects_wrong_question_id():
     )
     questions = [make_question(concept.id), make_question(concept.id)]
     service, _ = make_service(quiz, [concept], questions)
-    state = await service.start(quiz.id, owner)
+    state = await service.start(quiz.id, owner, None)
     assert state.question is not None
     wrong_question = next(q for q in questions if q.id != state.question.id)
 
@@ -392,7 +517,7 @@ async def test_summary_reflects_final_stats():
     )
     question = make_question(concept.id, correct="A")
     service, _ = make_service(quiz, [concept], [question])
-    state = await service.start(quiz.id, owner)
+    state = await service.start(quiz.id, owner, None)
     assert state.question is not None
     await service.submit_answer(
         state.session_id, owner, SubmitAnswerRequest(question_id=question.id, selected=["A"])
@@ -421,7 +546,7 @@ async def test_get_current_rejects_other_users_session():
         visibility="private",
     )
     service, _ = make_service(quiz, [concept], [make_question(concept.id)])
-    state = await service.start(quiz.id, owner)
+    state = await service.start(quiz.id, owner, None)
 
     with pytest.raises(NotFoundError):
         await service.get_current(state.session_id, stranger)

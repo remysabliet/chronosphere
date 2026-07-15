@@ -183,13 +183,21 @@ async def test_quiz_flow_end_to_end(monkeypatch: pytest.MonkeyPatch):
     assert all(r.allowed_question_types == ["MCQ"] for r, _ in ours)
 
     # 4. Each processed job attributed its stubbed questions back to the quiz's
-    # progress counter, keyed by the quiz_id carried in the job payload.
+    # informational counter and advanced the job-completion counter (the ready
+    # signal), both keyed by the quiz_id carried in the job payload.
     async with session_factory() as session:
-        ready = await session.execute(
-            text("SELECT generation_questions_ready FROM quizzes WHERE id = :id"),
-            {"id": str(response.id)},
-        )
-        assert ready.scalar_one() == len(ours) * QUESTIONS_PER_STUBBED_BATCH
+        row = (
+            await session.execute(
+                text(
+                    "SELECT generation_questions_ready, generation_jobs_completed, "
+                    "generation_jobs_total FROM quizzes WHERE id = :id"
+                ),
+                {"id": str(response.id)},
+            )
+        ).one()
+        assert row.generation_questions_ready == len(ours) * QUESTIONS_PER_STUBBED_BATCH
+        assert row.generation_jobs_completed == len(ours)
+        assert row.generation_jobs_total == response.generation_batches_enqueued
 
     # Cleanup: our DB rows and the test consumer group.
     async with session_factory() as session:

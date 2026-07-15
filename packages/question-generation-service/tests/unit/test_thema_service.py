@@ -207,6 +207,33 @@ def _patch_response(monkeypatch, response):
     monkeypatch.setattr("question_generation_service.services.thema_service.chat_complete", fake)
 
 
+def _capture_user_msg(monkeypatch, response) -> list[str]:
+    """Records every user_msg passed to the model so tests can assert what the
+    refine flow actually sends (e.g. the PRIOR GUESS block)."""
+    captured: list[str] = []
+
+    async def fake(system_msg, user_msg, config):
+        captured.append(user_msg)
+        return response
+
+    monkeypatch.setattr("question_generation_service.services.thema_service.chat_complete", fake)
+    return captured
+
+
+def _stored_candidate(
+    thema: str, topics: list[str], rank: int = 1, confidence: float = 0.9
+) -> dict[str, object]:
+    return {
+        "rank": rank,
+        "thema": thema,
+        "domain": "Software",
+        "disambiguator": f"{thema} sense",
+        "confidence": confidence,
+        "confirmation": f"You'll be quizzed on {thema}.",
+        "topics": topics,
+    }
+
+
 @pytest.mark.asyncio
 async def test_resolved_when_clear_winner(monkeypatch):
     _patch_response(
@@ -352,6 +379,95 @@ async def test_refine_supersedes_original_and_reextracts(monkeypatch):
     assert json.loads(entry.notes)["superseded_by"] == str(result.extraction_id)
     assert repo.saved is not None
     assert "CLARIFICATION: I mean CPU design" in repo.saved["raw_user_input"]
+
+
+@pytest.mark.asyncio
+async def test_refine_feeds_prior_guess_into_prompt(monkeypatch):
+    # The subtractive-clarification regression: the model can only keep the
+    # prior topics verbatim if refine() actually shows it what they were.
+    prior_topics = [
+        "Decorators and metaclasses",
+        "Concurrency with asyncio",
+        "Memory management",
+        "Advanced exception handling",
+    ]
+    entry = FakeEntry(
+        notes=json.dumps(
+            {
+                "status": "pending_confirmation",
+                "candidates": [_stored_candidate("Advanced Python", prior_topics)],
+            }
+        ),
+        raw_user_input="Python advanced",
+    )
+    repo = FakeThemaRepository(entry)
+    captured = _capture_user_msg(
+        monkeypatch,
+        _response("Advanced Python", "Software", prior_topics[:3], confidence=0.95),
+    )
+    service = _service(repo)
+
+    await service.refine(
+        entry.id, RefineRequest(clarification="drop advanced exception handling")
+    )
+
+    assert len(captured) == 1
+    prompt = captured[0]
+    assert "PRIOR GUESS" in prompt
+    assert "Advanced Python" in prompt
+    for topic in prior_topics:
+        assert topic in prompt
+    assert "CLARIFICATION: drop advanced exception handling" in prompt
+
+
+@pytest.mark.asyncio
+async def test_refine_omits_prior_guess_when_no_candidates(monkeypatch):
+    # A parent with no stored candidates (e.g. refined from an ambiguous root
+    # whose notes carried none) must not crash or emit an empty PRIOR GUESS.
+    entry = FakeEntry(
+        notes=json.dumps({"status": "pending_confirmation", "candidates": []}),
+        raw_user_input="Python advanced",
+    )
+    repo = FakeThemaRepository(entry)
+    captured = _capture_user_msg(
+        monkeypatch,
+        _response("Advanced Python", "Software", ["Decorators", "Asyncio"], confidence=0.9),
+    )
+    service = _service(repo)
+
+    result = await service.refine(entry.id, RefineRequest(clarification="focus on decorators"))
+
+    assert isinstance(result, ResolvedThema)
+    assert "PRIOR GUESS" not in captured[0]
+
+
+@pytest.mark.asyncio
+async def test_refine_uses_rank_one_candidate_for_prior_guess(monkeypatch):
+    # Prior guess must be the top-ranked reading, not whichever candidate
+    # happens to be first in storage order.
+    entry = FakeEntry(
+        notes=json.dumps(
+            {
+                "status": "pending_disambiguation",
+                "candidates": [
+                    _stored_candidate("Excel IF", ["Args", "Nesting"], rank=2, confidence=0.3),
+                    _stored_candidate("If Statement", ["Syntax", "Branching"], rank=1),
+                ],
+            }
+        ),
+        raw_user_input="if",
+    )
+    repo = FakeThemaRepository(entry)
+    captured = _capture_user_msg(
+        monkeypatch, _response("If Statement", "Software", ["Syntax"], confidence=0.95)
+    )
+    service = _service(repo)
+
+    await service.refine(entry.id, RefineRequest(clarification="the programming one"))
+
+    prompt = captured[0]
+    assert "If Statement" in prompt
+    assert "Excel IF" not in prompt
 
 
 @pytest.mark.asyncio

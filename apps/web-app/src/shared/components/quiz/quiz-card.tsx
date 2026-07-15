@@ -1,6 +1,8 @@
-import { Globe, Loader2 } from 'lucide-react';
+import { BookmarkPlus, Globe, Loader2, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 
+import { useCopyQuiz } from '@/hooks/use-copy-quiz';
+import { useDeleteQuiz } from '@/hooks/use-delete-quiz';
 import { ROUTES } from '@/lib/constants';
 import type { QuestionType } from '@/types/thema';
 import { quizProgressPercent, type QuizListItem } from '@/types/quiz';
@@ -11,8 +13,10 @@ import {
   CardHeader,
   CardTitle,
 } from '@/ui/card';
-import { buttonVariants } from '@/ui/button';
+import { Button, buttonVariants } from '@/ui/button';
 import { cn, formatDate } from '@/lib/utils';
+
+import { DeleteQuizDialog } from './delete-quiz-dialog';
 
 const MAX_VISIBLE_TOPICS = 3;
 
@@ -35,20 +39,49 @@ function timeLimitLabel(item: QuizListItem): string {
     : 'No limit';
 }
 
-export function QuizCard({
-  item,
-  showOwner = false,
-}: {
-  item: QuizListItem;
-  showOwner?: boolean;
-}) {
+export function QuizCard({ item }: { item: QuizListItem }) {
   const generating = item.status === 'generating';
   const percent = quizProgressPercent(item);
+  const deleteQuiz = useDeleteQuiz();
+  const copyQuiz = useCopyQuiz();
 
   return (
-    <Link href={ROUTES.QUIZ_DETAIL(item.id)} className='block h-full'>
-      <Card className='flex h-full flex-col transition-colors hover:bg-accent'>
-        <CardHeader className='space-y-1'>
+    <Card className='relative flex h-full flex-col transition-colors hover:bg-accent'>
+      {item.is_owner ? (
+        <DeleteQuizDialog
+          quizTitle={item.title}
+          onConfirm={() => deleteQuiz.mutate(item.id)}
+          trigger={
+            <Button
+              type='button'
+              size='icon'
+              variant='ghost'
+              aria-label='Delete quiz'
+              className='absolute right-2 top-2 z-10 text-muted-foreground hover:text-destructive'
+            >
+              <Trash2 className='size-4' />
+            </Button>
+          }
+        />
+      ) : (
+        <Button
+          type='button'
+          size='icon'
+          variant='ghost'
+          aria-label='Save to my quizzes'
+          disabled={copyQuiz.isPending}
+          onClick={() => copyQuiz.mutate(item.id)}
+          className='absolute right-2 top-2 z-10 text-muted-foreground hover:text-primary'
+        >
+          {copyQuiz.isPending ? (
+            <Loader2 className='size-4 animate-spin' />
+          ) : (
+            <BookmarkPlus className='size-4' />
+          )}
+        </Button>
+      )}
+      <Link href={ROUTES.QUIZ_DETAIL(item.id)} className='flex flex-1 flex-col'>
+        <CardHeader className='space-y-1 pr-10'>
           <CardTitle className='text-lg'>{item.title}</CardTitle>
           <p className='text-sm text-muted-foreground'>{item.thema}</p>
         </CardHeader>
@@ -74,7 +107,7 @@ export function QuizCard({
             {questionCountLabel(item)} · {timeLimitLabel(item)} ·{' '}
             {item.question_types.map(type => TYPE_INITIALS[type]).join(', ')}
           </p>
-          {showOwner && item.owner_name && (
+          {!item.is_owner && item.owner_name && (
             <p className='flex items-center gap-1.5 text-xs text-muted-foreground'>
               <Globe className='size-3.5' />
               {item.owner_name}
@@ -101,7 +134,7 @@ export function QuizCard({
             {generating ? 'Generating…' : 'Start'}
           </span>
         </CardFooter>
-      </Card>
-    </Link>
+      </Link>
+    </Card>
   );
 }

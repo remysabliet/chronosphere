@@ -29,6 +29,7 @@ export const ROUTES = {
   QUIZ_NEW: '/app/quiz/new',
   QUIZ_NEW_MANUAL: '/app/quiz/new/manual',
   SESSION: (id: string) => `/app/sessions/${id}`,
+  HISTORY: '/app/history',
   MEMOCARDS: '/app/memocards',
   ANALYTICS: '/app/analytics',
 

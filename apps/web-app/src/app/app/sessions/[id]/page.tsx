@@ -9,13 +9,14 @@ import { toast } from 'sonner';
 
 import {
   getSessionAction,
-  getSessionSummaryAction,
+  getSessionReviewAction,
   submitAnswerAction,
 } from '@/lib/actions/session-actions';
 import { ROUTES } from '@/lib/constants';
 import { isSessionExpiredError, toFriendlyErrorMessage } from '@/lib/errors';
 import { cn } from '@/lib/utils';
 import { SessionExpiredDialog } from '@/shared/components/auth/session-expired-dialog';
+import { SessionResults } from '@/shared/components/quiz/session-results';
 import type {
   AnswerResult,
   SessionQuestion,
@@ -62,6 +63,13 @@ export default function SessionPage() {
     if (initialState) setState(prev => prev ?? initialState);
   }, [initialState]);
 
+  function advance(nextState: SessionState) {
+    setState(nextState);
+    setFeedback(null);
+    setSelected([]);
+    setStartedAt(Date.now());
+  }
+
   const submitMutation = useMutation({
     mutationFn: (question: SessionQuestion) =>
       submitAnswerAction(sessionId, {
@@ -69,7 +77,15 @@ export default function SessionPage() {
         selected,
         response_time_seconds: Math.round((Date.now() - startedAt) / 1000),
       }),
-    onSuccess: setFeedback,
+    onSuccess: result => {
+      // Outside immediate mode the backend redacts grading — advance
+      // silently instead of pausing on an empty feedback panel.
+      if (result.state.feedback_mode === 'immediate') {
+        setFeedback(result);
+      } else {
+        advance(result.state);
+      }
+    },
     onError: (error: unknown) => {
       if (isSessionExpiredError(error)) {
         setSessionExpired(true);
@@ -79,18 +95,15 @@ export default function SessionPage() {
     },
   });
 
-  const summaryQuery = useQuery({
-    queryKey: ['session-summary', sessionId],
-    queryFn: () => getSessionSummaryAction(sessionId),
+  const reviewQuery = useQuery({
+    queryKey: ['session-review', sessionId],
+    queryFn: () => getSessionReviewAction(sessionId),
     enabled: state?.session_complete === true,
   });
 
   function handleNext() {
     if (!feedback) return;
-    setState(feedback.state);
-    setFeedback(null);
-    setSelected([]);
-    setStartedAt(Date.now());
+    advance(feedback.state);
   }
 
   if (isLoading || !state) {
@@ -110,11 +123,18 @@ export default function SessionPage() {
       <SessionExpiredDialog open={sessionExpired} />
 
       {state.session_complete ? (
-        <SessionResults
-          totalQuestions={state.total_questions}
-          correctCount={state.correct_count}
-          accuracy={summaryQuery.data?.accuracy}
-        />
+        reviewQuery.data ? (
+          <SessionResults review={reviewQuery.data} />
+        ) : reviewQuery.isError ? (
+          <ResultsError
+            correctCount={state.correct_count}
+            totalQuestions={state.total_questions}
+            isRetrying={reviewQuery.isFetching}
+            onRetry={() => reviewQuery.refetch()}
+          />
+        ) : (
+          <p className='text-muted-foreground'>Preparing your results…</p>
+        )
       ) : (
         <ActiveQuestion
           state={state}
@@ -127,6 +147,44 @@ export default function SessionPage() {
         />
       )}
     </div>
+  );
+}
+
+function ResultsError({
+  correctCount,
+  totalQuestions,
+  isRetrying,
+  onRetry,
+}: {
+  correctCount: number | null;
+  totalQuestions: number;
+  isRetrying: boolean;
+  onRetry: () => void;
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Quiz complete!</CardTitle>
+      </CardHeader>
+      <CardContent className='space-y-2'>
+        {correctCount !== null && (
+          <p className='font-medium'>
+            {correctCount} of {totalQuestions} correct
+          </p>
+        )}
+        <p className='text-sm text-muted-foreground'>
+          The detailed results couldn&apos;t be loaded.
+        </p>
+      </CardContent>
+      <CardFooter className='gap-2'>
+        <Button onClick={onRetry} disabled={isRetrying}>
+          {isRetrying ? 'Retrying…' : 'Retry'}
+        </Button>
+        <Button asChild variant='outline'>
+          <Link href={ROUTES.QUIZZES}>Back to quizzes</Link>
+        </Button>
+      </CardFooter>
+    </Card>
   );
 }
 
@@ -173,7 +231,7 @@ function ActiveQuestion({
           onChange={onSelectedChange}
           disabled={feedback !== null}
         />
-        {feedback && (
+        {feedback && feedback.is_correct !== null && (
           <div
             className={cn(
               'flex items-start gap-2 rounded-lg border p-3 text-sm',
@@ -191,7 +249,7 @@ function ActiveQuestion({
               <p className='font-medium'>
                 {feedback.is_correct
                   ? 'Correct!'
-                  : `Correct answer: ${feedback.correct_answers.join(', ')}`}
+                  : `Correct answer: ${(feedback.correct_answers ?? []).join(', ')}`}
               </p>
               {feedback.explanation && (
                 <p className='mt-1 text-muted-foreground'>
@@ -212,7 +270,7 @@ function ActiveQuestion({
             disabled={selected.length === 0 || isSubmitting}
             onClick={() => onSubmit(question)}
           >
-            {isSubmitting ? 'Checking…' : 'Submit answer'}
+            {isSubmitting ? 'Submitting…' : 'Submit answer'}
           </Button>
         )}
       </CardFooter>
@@ -274,39 +332,5 @@ function AnswerInput({
         </Button>
       ))}
     </div>
-  );
-}
-
-function SessionResults({
-  totalQuestions,
-  correctCount,
-  accuracy,
-}: {
-  totalQuestions: number;
-  correctCount: number;
-  accuracy?: number;
-}) {
-  const percent =
-    accuracy !== undefined
-      ? Math.round(accuracy * 100)
-      : Math.round((correctCount / Math.max(totalQuestions, 1)) * 100);
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Quiz complete!</CardTitle>
-      </CardHeader>
-      <CardContent className='space-y-2'>
-        <p className='text-3xl font-bold'>{percent}%</p>
-        <p className='text-muted-foreground'>
-          {correctCount} of {totalQuestions} correct
-        </p>
-      </CardContent>
-      <CardFooter>
-        <Button asChild>
-          <Link href={ROUTES.QUIZZES}>Back to quizzes</Link>
-        </Button>
-      </CardFooter>
-    </Card>
   );
 }

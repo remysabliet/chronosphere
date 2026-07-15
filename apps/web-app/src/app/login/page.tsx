@@ -34,7 +34,7 @@ export default async function LoginPage({
     ? callbackUrl
     : DEFAULT_AUTHENTICATED_ROUTE;
 
-  if (session) {
+  if (session && !session.error) {
     redirect(redirectTo);
   }
 

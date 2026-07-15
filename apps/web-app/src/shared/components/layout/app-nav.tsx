@@ -2,6 +2,7 @@
 
 import {
   BarChart3,
+  History,
   Layers,
   LayoutDashboard,
   Library,
@@ -17,6 +18,7 @@ import { cn } from '@/lib/utils';
 const NAV_ITEMS = [
   { href: ROUTES.QUIZZES, label: 'Quizzes', icon: Library, enabled: true },
   { href: ROUTES.QUIZ_NEW, label: 'New Quiz', icon: PlusCircle, enabled: true },
+  { href: ROUTES.HISTORY, label: 'History', icon: History, enabled: true },
   {
     href: ROUTES.HOME_APP,
     label: 'Home',

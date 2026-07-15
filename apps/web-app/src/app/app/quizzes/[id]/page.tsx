@@ -1,18 +1,27 @@
 'use client';
 
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Check, Pencil, X } from 'lucide-react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { BookmarkPlus, Check, Pencil, Trash2, X } from 'lucide-react';
 import { useParams, useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 
+import { useCopyQuiz } from '@/hooks/use-copy-quiz';
+import { useDeleteQuiz } from '@/hooks/use-delete-quiz';
+import { useQuizEvents } from '@/hooks/use-quiz-events';
 import { useQuizProgress } from '@/hooks/use-quiz-progress';
 import { renameQuizAction } from '@/lib/actions/quiz-actions';
-import { startSessionAction } from '@/lib/actions/session-actions';
+import {
+  getSessionPreferencesAction,
+  startSessionAction,
+} from '@/lib/actions/session-actions';
 import { ROUTES } from '@/lib/constants';
 import { isSessionExpiredError, toFriendlyErrorMessage } from '@/lib/errors';
-import { formatDate } from '@/lib/utils';
+import { cn, formatDate } from '@/lib/utils';
 import { SessionExpiredDialog } from '@/shared/components/auth/session-expired-dialog';
+import { DeleteQuizDialog } from '@/shared/components/quiz/delete-quiz-dialog';
+import { SessionHistoryCard } from '@/shared/components/quiz/session-history';
 import { quizProgressPercent, type QuizDetailResponse } from '@/types/quiz';
+import { FEEDBACK_MODES, type FeedbackMode } from '@/types/session';
 import { Button } from '@/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/ui/card';
 import { Input } from '@/ui/input';
@@ -86,14 +95,16 @@ function QuizTitle({
   return (
     <div className='group flex items-center gap-2'>
       <h1 className='text-2xl font-bold'>{quiz.title}</h1>
-      <Button
-        size='icon'
-        variant='ghost'
-        className='opacity-0 group-hover:opacity-100'
-        onClick={startEditing}
-      >
-        <Pencil className='size-4' />
-      </Button>
+      {quiz.is_owner && (
+        <Button
+          size='icon'
+          variant='ghost'
+          className='opacity-0 group-hover:opacity-100'
+          onClick={startEditing}
+        >
+          <Pencil className='size-4' />
+        </Button>
+      )}
     </div>
   );
 }
@@ -101,11 +112,27 @@ function QuizTitle({
 export default function QuizDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
+  // Live generation progress: SSE events patch the query cache in place.
+  useQuizEvents();
   const { data: quiz, isLoading, isError } = useQuizProgress(params.id);
   const [sessionExpired, setSessionExpired] = React.useState(false);
+  const deleteQuiz = useDeleteQuiz(() => router.push(ROUTES.QUIZZES));
+  const copyQuiz = useCopyQuiz(copy =>
+    router.push(ROUTES.QUIZ_DETAIL(copy.id))
+  );
+
+  const preferencesQuery = useQuery({
+    queryKey: ['session-preferences'],
+    queryFn: getSessionPreferencesAction,
+  });
+  const [feedbackMode, setFeedbackMode] = React.useState<FeedbackMode | null>(
+    null
+  );
+  const selectedMode =
+    feedbackMode ?? preferencesQuery.data?.default_feedback_mode ?? 'end';
 
   const startMutation = useMutation({
-    mutationFn: () => startSessionAction(params.id),
+    mutationFn: () => startSessionAction(params.id, feedbackMode),
     onSuccess: state => router.push(ROUTES.SESSION(state.session_id)),
     onError: error => {
       if (isSessionExpiredError(error)) {
@@ -149,13 +176,74 @@ export default function QuizDetailPage() {
             Created {formatDate(quiz.created_at)}
           </p>
         </div>
-        <Button
-          disabled={quiz.questions_ready === 0 || startMutation.isPending}
-          onClick={() => startMutation.mutate()}
-        >
-          {startMutation.isPending ? 'Starting…' : 'Start quiz'}
-        </Button>
+        <div className='flex items-center gap-2'>
+          {quiz.is_owner ? (
+            <DeleteQuizDialog
+              quizTitle={quiz.title}
+              onConfirm={() => deleteQuiz.mutate(params.id)}
+              trigger={
+                <Button
+                  type='button'
+                  variant='ghost'
+                  size='icon'
+                  aria-label='Delete quiz'
+                  className='text-muted-foreground hover:text-destructive'
+                >
+                  <Trash2 className='size-4' />
+                </Button>
+              }
+            />
+          ) : (
+            <Button
+              type='button'
+              variant='outline'
+              disabled={copyQuiz.isPending}
+              onClick={() => copyQuiz.mutate(params.id)}
+            >
+              <BookmarkPlus className='size-4' />
+              {copyQuiz.isPending ? 'Saving…' : 'Save to my quizzes'}
+            </Button>
+          )}
+          <Button
+            disabled={
+              quiz.questions_ready === 0 ||
+              preferencesQuery.isPending ||
+              startMutation.isPending
+            }
+            onClick={() => startMutation.mutate()}
+          >
+            {startMutation.isPending ? 'Starting…' : 'Start quiz'}
+          </Button>
+        </div>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className='text-base'>Feedback</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className='grid gap-2 sm:grid-cols-3'>
+            {FEEDBACK_MODES.map(mode => (
+              <button
+                key={mode.value}
+                type='button'
+                onClick={() => setFeedbackMode(mode.value)}
+                className={cn(
+                  'rounded-lg border p-3 text-left transition-colors',
+                  selectedMode === mode.value
+                    ? 'border-primary bg-primary/5'
+                    : 'border-border hover:bg-muted/50'
+                )}
+              >
+                <p className='text-sm font-medium'>{mode.label}</p>
+                <p className='mt-0.5 text-xs text-muted-foreground'>
+                  {mode.description}
+                </p>
+              </button>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>
@@ -199,6 +287,8 @@ export default function QuizDetailPage() {
           )}
         </CardContent>
       </Card>
+
+      <SessionHistoryCard quizId={params.id} />
     </div>
   );
 }

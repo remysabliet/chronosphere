@@ -7,6 +7,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import * as React from 'react';
 
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
+import { useQuizEvents } from '@/hooks/use-quiz-events';
 import { listQuizzesAction } from '@/lib/actions/quiz-actions';
 import { ROUTES, TIMEOUTS } from '@/lib/constants';
 import { QuizCard } from '@/shared/components/quiz/quiz-card';
@@ -52,6 +53,10 @@ export default function QuizLibraryPage() {
   }
 
   const hasFilters = debouncedQuery.length > 0 || status !== null;
+
+  // Generation progress is pushed over SSE and patched into this query's
+  // cache — no interval refetching.
+  useQuizEvents();
 
   const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading } =
     useInfiniteQuery({
@@ -99,20 +104,24 @@ export default function QuizLibraryPage() {
           />
         </div>
 
-        {STATUS_CHIPS.map(chip => (
-          <Button
-            key={chip.value}
-            type='button'
-            size='sm'
-            variant='outline'
-            className={status === chip.value ? 'bg-accent' : undefined}
-            onClick={() =>
-              setStatus(prev => (prev === chip.value ? null : chip.value))
-            }
-          >
-            {chip.label}
-          </Button>
-        ))}
+        {STATUS_CHIPS.map(chip => {
+          const active = status === chip.value;
+          return (
+            <Button
+              key={chip.value}
+              type='button'
+              size='sm'
+              aria-pressed={active}
+              variant={active ? 'default' : 'outline'}
+              className='rounded-full'
+              onClick={() =>
+                setStatus(prev => (prev === chip.value ? null : chip.value))
+              }
+            >
+              {chip.label}
+            </Button>
+          );
+        })}
       </div>
 
       {!isLoading && items.length === 0 ? (
@@ -124,7 +133,7 @@ export default function QuizLibraryPage() {
       ) : (
         <div className='grid gap-4 sm:grid-cols-2 lg:grid-cols-3'>
           {items.map(item => (
-            <QuizCard key={item.id} item={item} showOwner={view === 'shared'} />
+            <QuizCard key={item.id} item={item} />
           ))}
         </div>
       )}

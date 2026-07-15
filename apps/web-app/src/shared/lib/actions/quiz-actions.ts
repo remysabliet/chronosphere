@@ -9,7 +9,7 @@ import type {
   QuizResponse,
 } from '@/types/quiz';
 
-import { getJSON, patchJSON, postJSON } from './api-client';
+import { deleteJSON, getJSON, patchJSON, postJSON } from './api-client';
 
 export async function createQuizAction(
   body: QuizCreateRequest
@@ -43,4 +43,12 @@ export async function renameQuizAction(
   title: string
 ): Promise<QuizDetailResponse> {
   return patchJSON(`/v1/quizzes/${id}`, { title });
+}
+
+export async function deleteQuizAction(id: string): Promise<void> {
+  return deleteJSON(`/v1/quizzes/${id}`);
+}
+
+export async function copyQuizAction(id: string): Promise<QuizDetailResponse> {
+  return postJSON(`/v1/quizzes/${id}/copy`, {});
 }

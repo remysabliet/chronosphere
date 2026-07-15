@@ -1,8 +1,8 @@
 import { auth } from '@/lib/auth';
 
-const BASE_URL = process.env.NEXT_PUBLIC_QUESTION_GEN_URL;
+export const BASE_URL = process.env.NEXT_PUBLIC_QUESTION_GEN_URL;
 
-async function authHeaders(): Promise<Record<string, string>> {
+export async function authHeaders(): Promise<Record<string, string>> {
   const session = await auth();
   if (!session?.idToken || session.error) {
     throw new Error('Not authenticated');
@@ -18,6 +18,10 @@ async function parse<T>(res: Response): Promise<T> {
       ? detail.map((item: { msg?: string }) => item.msg).join(', ')
       : detail;
     throw new Error(message || `Request failed with status ${res.status}`);
+  }
+
+  if (res.status === 204) {
+    return undefined as T;
   }
 
   return res.json() as Promise<T>;
@@ -49,4 +53,12 @@ export function postJSON<T>(path: string, body: unknown): Promise<T> {
 
 export function patchJSON<T>(path: string, body: unknown): Promise<T> {
   return bodyJSON<T>('PATCH', path, body);
+}
+
+export async function deleteJSON<T = void>(path: string): Promise<T> {
+  const res = await fetch(`${BASE_URL}${path}`, {
+    method: 'DELETE',
+    headers: await authHeaders(),
+  });
+  return parse<T>(res);
 }

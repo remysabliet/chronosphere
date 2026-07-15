@@ -14,7 +14,7 @@ export default async function AppLayout({
   children: React.ReactNode;
 }) {
   const session = await auth();
-  if (!session) {
+  if (!session || session.error) {
     redirect(ROUTES.LOGIN);
   }
 

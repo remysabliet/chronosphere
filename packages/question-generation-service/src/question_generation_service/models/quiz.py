@@ -13,7 +13,8 @@ from question_generation_service.db.base import Base
 class Quiz(Base):
     """User-owned quiz configuration (thema + wizard choices) — not the
     questions themselves: those live in the shared/private pools and sessions
-    are runs of a quiz.
+    are runs of a quiz. Deletion is a soft delete (deleted_at): session
+    history keeps its title and review after the config is gone.
     """
 
     __tablename__ = "quizzes"
@@ -26,10 +27,18 @@ class Quiz(Base):
     question_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     time_limit_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
     visibility: Mapped[str] = mapped_column(Text, nullable=False, default="private")
-    # Incremented by the worker as each jobs:generate-questions batch completes.
+    # Informational count of questions produced so far (a batch may yield fewer
+    # than BATCH_SIZE after validation/dedup) — shown as "N questions ready", not
+    # used to decide completion.
     generation_questions_ready: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # Completion is job-based: the quiz is ready once generation_jobs_completed
+    # reaches generation_jobs_total. total is set at creation; completed is bumped
+    # once per finished job by the worker.
+    generation_jobs_total: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    generation_jobs_completed: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class QuizConcept(Base):

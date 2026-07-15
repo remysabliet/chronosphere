@@ -184,6 +184,10 @@ completed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 -- A quiz is a user-owned configuration (thema + wizard choices), not the
 -- questions: questions live in the shared/private pools, sessions are runs
 -- of a quiz. visibility gates sharing; private quizzes are owner-only.
+-- Deletion is a SOFT delete (deleted_at): session history must outlive the
+-- quiz config (title, topics, per-question review stay resolvable), so the
+-- row is tombstoned, hidden from listings/detail/session-start, and only a
+-- future retention job may hard-purge it.
 CREATE TABLE quizzes (
 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 owner_user_id UUID NOT NULL,
@@ -195,11 +199,15 @@ time_limit_minutes INT, -- NULL when count-based
 visibility TEXT NOT NULL DEFAULT 'private', -- 'private', 'shared', 'public'
 generation_questions_ready INT NOT NULL DEFAULT 0, -- incremented by the worker as jobs:generate-questions batches complete
 created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+deleted_at TIMESTAMPTZ -- soft-delete tombstone; NULL = live
 );
 
 -- Indexes for quizzes
-CREATE INDEX idx_quizzes_owner_recent ON quizzes(owner_user_id, updated_at);
+-- Partial: listings only ever read live rows, so tombstones never bloat the
+-- hot per-owner index.
+CREATE INDEX idx_quizzes_owner_recent ON quizzes(owner_user_id, updated_at)
+WHERE deleted_at IS NULL;
 CREATE INDEX idx_quizzes_owner_thema ON quizzes(owner_user_id, thema);
 
 -- Constraints for quizzes
@@ -242,7 +250,10 @@ updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Indexes for quiz_sessions
-CREATE INDEX idx_quiz_sessions_user_id ON quiz_sessions(user_id);
+-- (user_id, start_time DESC) serves the History page's
+-- "my sessions, newest first" directly; it also covers plain user_id lookups
+-- (leftmost prefix), so no single-column user_id index.
+CREATE INDEX idx_quiz_sessions_user_recent ON quiz_sessions(user_id, start_time DESC);
 CREATE INDEX idx_quiz_sessions_start_time ON quiz_sessions(start_time);
 CREATE INDEX idx_quiz_sessions_status ON quiz_sessions(session_status);
 CREATE INDEX idx_quiz_sessions_type ON quiz_sessions(session_type);
@@ -259,8 +270,11 @@ FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE;
 
 CREATE INDEX idx_quiz_sessions_quiz_user ON quiz_sessions(quiz_id, user_id);
 
+-- SET NULL, never CASCADE: a learner's session history outlives the quiz
+-- config. Quiz deletion is a soft delete anyway (quizzes.deleted_at); this
+-- FK only fires if a retention job hard-purges old tombstones.
 ALTER TABLE quiz_sessions ADD CONSTRAINT fk_quiz_sessions_quiz
-FOREIGN KEY (quiz_id) REFERENCES quizzes(id) ON DELETE CASCADE;
+FOREIGN KEY (quiz_id) REFERENCES quizzes(id) ON DELETE SET NULL;
 
 CREATE TABLE user_responses (
 id UUID PRIMARY KEY,

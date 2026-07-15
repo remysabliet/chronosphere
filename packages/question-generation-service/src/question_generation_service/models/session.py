@@ -28,6 +28,7 @@ class QuizSession(Base):
     )
     thema: Mapped[str | None] = mapped_column(String, nullable=True)
     session_type: Mapped[str] = mapped_column(String, nullable=False, default="assessment")
+    feedback_mode: Mapped[str] = mapped_column(String, nullable=False, default="end")
     start_time: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )
